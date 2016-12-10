@@ -1,0 +1,7 @@
+Game has time system that lasts unspecifically but cyclically, maybe 10 days?
+
+REMEMBER THIS:
+	No color swapping required! Load the image, use a 'multiply' overlay to
+	change base color, then all that is required is an image pattern to create
+	other visual textures like stripes and spots that can be overlayed onto the
+	original image after they have been overlaid with the proper color.

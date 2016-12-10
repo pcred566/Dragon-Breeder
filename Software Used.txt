@@ -1,0 +1,6 @@
+SGE's PyGame-Based Graphics Engine for Graphics
+shader.py by Tristam MacDonald for OpenGL Shader Compilation
+Tiled Map Editor for tileset map generation
+Python for all Programming and Logic
+Aseprite for all sprite, tile, and visual assets
+FontStruct for generating custom font
