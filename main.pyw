@@ -1,7 +1,7 @@
 # Imports sge, sge.gfx, sge.dsp, and random modules, along with utility functions.
 from utils import *
 
-class Game(sge.dsp.Game):
+class Game(dsp.Game):
 
     def event_step(self,rt,dt):
         # following line draws region main gameplay occurs in
@@ -87,25 +87,24 @@ font = gfx.Font("pixel fonts/Quadratic.ttf", size=13)
 lfont = gfx.Font("pixel fonts/Quadratic.ttf", size=26)
 
 # Load backgrounds
-bgspr = gfx.Sprite("bubble","tiles",fps=FPS,origin_x=64,origin_y=64)
+bgspr = gfx.Sprite("bubble","backgrounds",fps=FPS,origin_x=64,origin_y=64)
 bglayers = [gfx.BackgroundLayer(bgspr,0,0,repeat_left=True,repeat_right=True,
                               repeat_up=True,repeat_down=True)]
 background = sge.gfx.Background([], sge.gfx.Color("white"))
 
 # Object/sprite
 sprites = [gfx.Sprite("base_dragon","sprites",fps=FPS) for i in range(10)]
-texsprite = gfx.Sprite("tex_stripes","sprites",fps=FPS)
+texsprite = gfx.Sprite("tex_speckles","sprites",fps=FPS)
 for sprite in sprites:
     resize_sprite(sprite,1)
 
     if choice([1,2]) == 1:
         texsprite.flip()
     # recolor params
-    col = desaturated_randcol(12,randint(25,100))
-    colpri = col
-    colsec = gfx.Color((col[0]//2,col[1]//2,col[2]//2,255))
+    colpri = saturated_randcol(randint(100,255))#desaturated_randcol(12,randint(35,100))
+    colsec = gen_secondary_col(colpri)
     
-    rel = randint(-texsprite.width,0)
+    rel = randint(-texsprite.width//2,0)
     
     recolor(sprite,colpri,texsprite,colsec,rel)
     eyes = gfx.Sprite("base_eyes","sprites",fps=FPS)

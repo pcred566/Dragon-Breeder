@@ -1,6 +1,29 @@
 import sge
-from sge import gfx,dsp
+from sge import gfx,dsp,collision
 from random import randrange,randint,choice
+ 
+hash_table = [168, 175, 53, 13, 167, 180, 50, 255, 102, 62,
+              57, 174, 91, 55, 244, 97, 241, 14, 34, 178,
+              161, 251, 104, 206, 31, 60, 198, 15, 235, 144,
+              38, 64, 187, 106, 72, 149, 214, 110, 186, 131,
+              5, 92, 132, 74, 107, 129, 184, 10, 138, 155, 243,
+              137, 176, 121, 79, 225, 84, 22, 185, 18, 71, 147,
+              221, 211, 7, 49, 233, 78, 220, 154, 96, 11, 37, 253,
+              196, 101, 236, 248, 205, 237, 67, 204, 226, 75, 36,
+              140, 239, 20, 133, 190, 95, 194, 87, 98, 188, 42, 130,
+              35, 209, 99, 108, 3, 46, 245, 224, 210, 145, 200, 246,
+              83, 25, 117, 30, 43, 105, 254, 82, 85, 94, 218, 123,
+              164, 177, 48, 247, 146, 215, 189, 231, 51, 150, 136,
+              23, 66, 8, 229, 0, 61, 179, 86, 77, 223, 76, 41, 126,
+              202, 157, 59, 227, 47, 191, 169, 208, 139, 230, 73, 240,
+              100, 232, 207, 182, 40, 39, 122, 170, 143, 172, 192, 119,
+              148, 17, 249, 213, 93, 124, 219, 242, 63, 112, 159, 103,
+              156, 33, 238, 12, 135, 153, 173, 4, 181, 151, 2, 216, 80,
+              152, 109, 56, 197, 27, 165, 250, 1, 217, 116, 6, 16, 113,
+              65, 142, 118, 128, 134, 160, 115, 125, 228, 203, 28, 58,
+              120, 222, 183, 26, 19, 68, 201, 29, 88, 252, 199, 212, 127,
+              90, 163, 234, 32, 24, 114, 45, 54, 111, 195, 162, 21, 44, 158,
+              141, 89, 69, 193, 81, 166, 52, 171, 9, 70]
 
 VERSION = 1.0
 FPS=64
@@ -10,11 +33,17 @@ def current_fps():
     "Returns rate the game is running at in fps."
     return round(1/(sge.game.regulate_speed(None)/1000),2);
 
+def clamp(num,start,end):
+    """Returns 'num' if num >= start and num <= end, else forces into range."""
+    if num >= start and num <= end: return num
+    elif num < start: return start
+    elif num > end: return end
+
 def top_obj(obj,x,y):
     """"Finds the object of type 'obj' that has the largest z-value
         at point (x,y). Returns None if no objects collide at (x,y).
         Follows convention that if 'obj' is None, all object types collide."""
-    colliding = sge.collision.rectangle(x,y,1,1,obj)
+    colliding = collision.rectangle(x,y,1,1,obj)
     if len(colliding) == 0: return None
     
     top = colliding[0]
@@ -43,9 +72,9 @@ def resize_sprite(sprite, scale):
     sprite.bbox_y = -sprite.origin_y
 
 def recolor(sprite, col1, texsprite, col2, rel):
-    """Recolors sprite 1 with col1, texture sprite with col2, then overlays
-       resulting texsprite onto resulting sprite. 'rel' is a number that represents
-       the location the texture should be drawn relative to sprite when it is overlaid."""
+    """Recolors sprite 1 with col1, texsprite with col2, then overlays resulting
+       texsprite onto resulting sprite. 'rel' is a number that represents the
+       location the texture should be drawn relative to sprite when it is overlaid."""
     # overlay main sprite color
     sprite.draw_rectangle(0,0,sprite.width,sprite.height,fill=col1,
                           blend_mode=sge.BLEND_RGBA_MULTIPLY)
@@ -56,6 +85,7 @@ def recolor(sprite, col1, texsprite, col2, rel):
     # Refresh texture sprite to white
     texsprite.draw_rectangle(0,0,temp.width,temp.height,fill=gfx.Color('white'),
                              blend_mode=sge.BLEND_RGB_MAXIMUM)
+    
     # Recolor textured parts of image
     texsprite.draw_rectangle(0,0,temp.width,temp.height,fill=col2,
                              blend_mode=sge.BLEND_RGBA_MULTIPLY)
@@ -71,15 +101,17 @@ def randcol():
     col = [randint(0,255) for _ in range(3)]
     return gfx.Color(tuple(col))
 
-def saturated_randcol():
-    """Returns a random color that is guaranteed to be fully saturated."""
+def saturated_randcol(value=255):
+    """Returns a random color that is guaranteed to be fully saturated.
+       Min brightness clamped to 40."""
     # one channel is zero, one is random and one is max
     channels = [0,randint(0,255),255]
     col = [0,0,0]
+    value = clamp(value,40,255)
     
     for i in range(3):
         channel = choice(channels)
-        col[i] = channel
+        col[i] = channel*value//255
         channels.remove(channel)
     
     return gfx.Color(tuple(col))
@@ -101,15 +133,15 @@ def pastel_randcol():
     
     return gfx.Color(tuple(col))
 
-def desaturated_randcol(saturation,brightness):
+def desaturated_randcol(saturation,brightness=100):
     """Returns a random color that is guaranteed to have low-ish saturation.
        Brightness of output is ceiling-ed at 253 to contrast with pure white,
        and floor-ed at 10 to contrast with pure black (outlines of sprites etc.)
        The 'saturation' input controls how desaturated the color should be.
        This value should both be in the range (0,255)."""
     # begin with greyscale
-    brightness = 25 if brightness < 25 else brightness
-    sat = 255-brightness if saturation > 255-brightness else saturation
+    brightness = clamp(brightness,25,255)
+    sat = clamp(saturation,0,255-brightness)
     col = [brightness,brightness,brightness]
     for i in range(3):
         col[i] += randint(-sat,sat)
@@ -118,6 +150,13 @@ def desaturated_randcol(saturation,brightness):
         col[i] = max(col[i],0)
     
     return gfx.Color(tuple(col))
+
+def gen_secondary_col(primary):
+    """Uses a color hash to generate a secondary color given the primary.
+       Always produces the same output on a given input, but comparatively
+       the output color can appear to be totally random."""
+    r,g,b = primary.red,primary.green,primary.blue
+    return primary
 
 def calc_bbox(sprite, frame):
     """Returns a 4-tuple containing bounding box x,y,width, and height
