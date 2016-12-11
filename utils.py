@@ -2,32 +2,31 @@ import sge
 from sge import gfx,dsp,collision
 from random import randrange,randint,choice
  
-hash_table = [168, 175, 53, 13, 167, 180, 50, 255, 102, 62,
-              57, 174, 91, 55, 244, 97, 241, 14, 34, 178,
-              161, 251, 104, 206, 31, 60, 198, 15, 235, 144,
-              38, 64, 187, 106, 72, 149, 214, 110, 186, 131,
-              5, 92, 132, 74, 107, 129, 184, 10, 138, 155, 243,
-              137, 176, 121, 79, 225, 84, 22, 185, 18, 71, 147,
-              221, 211, 7, 49, 233, 78, 220, 154, 96, 11, 37, 253,
-              196, 101, 236, 248, 205, 237, 67, 204, 226, 75, 36,
-              140, 239, 20, 133, 190, 95, 194, 87, 98, 188, 42, 130,
-              35, 209, 99, 108, 3, 46, 245, 224, 210, 145, 200, 246,
-              83, 25, 117, 30, 43, 105, 254, 82, 85, 94, 218, 123,
-              164, 177, 48, 247, 146, 215, 189, 231, 51, 150, 136,
-              23, 66, 8, 229, 0, 61, 179, 86, 77, 223, 76, 41, 126,
-              202, 157, 59, 227, 47, 191, 169, 208, 139, 230, 73, 240,
-              100, 232, 207, 182, 40, 39, 122, 170, 143, 172, 192, 119,
-              148, 17, 249, 213, 93, 124, 219, 242, 63, 112, 159, 103,
-              156, 33, 238, 12, 135, 153, 173, 4, 181, 151, 2, 216, 80,
-              152, 109, 56, 197, 27, 165, 250, 1, 217, 116, 6, 16, 113,
-              65, 142, 118, 128, 134, 160, 115, 125, 228, 203, 28, 58,
-              120, 222, 183, 26, 19, 68, 201, 29, 88, 252, 199, 212, 127,
-              90, 163, 234, 32, 24, 114, 45, 54, 111, 195, 162, 21, 44, 158,
-              141, 89, 69, 193, 81, 166, 52, 171, 9, 70]
+hash = [168, 175, 53, 13, 167, 180, 50, 255, 102, 62,
+          57, 174, 91, 55, 244, 97, 241, 14, 34, 178,
+          161, 251, 104, 206, 31, 60, 198, 15, 235, 144,
+          38, 64, 187, 106, 72, 149, 214, 110, 186, 131,
+          5, 92, 132, 74, 107, 129, 184, 10, 138, 155, 243,
+          137, 176, 121, 79, 225, 84, 22, 185, 18, 71, 147,
+          221, 211, 7, 49, 233, 78, 220, 154, 96, 11, 37, 253,
+          196, 101, 236, 248, 205, 237, 67, 204, 226, 75, 36,
+          140, 239, 20, 133, 190, 95, 194, 87, 98, 188, 42, 130,
+          35, 209, 99, 108, 3, 46, 245, 224, 210, 145, 200, 246,
+          83, 25, 117, 30, 43, 105, 254, 82, 85, 94, 218, 123,
+          164, 177, 48, 247, 146, 215, 189, 231, 51, 150, 136,
+          23, 66, 8, 229, 0, 61, 179, 86, 77, 223, 76, 41, 126,
+          202, 157, 59, 227, 47, 191, 169, 208, 139, 230, 73, 240,
+          100, 232, 207, 182, 40, 39, 122, 170, 143, 172, 192, 119,
+          148, 17, 249, 213, 93, 124, 219, 242, 63, 112, 159, 103,
+          156, 33, 238, 12, 135, 153, 173, 4, 181, 151, 2, 216, 80,
+          152, 109, 56, 197, 27, 165, 250, 1, 217, 116, 6, 16, 113,
+          65, 142, 118, 128, 134, 160, 115, 125, 228, 203, 28, 58,
+          120, 222, 183, 26, 19, 68, 201, 29, 88, 252, 199, 212, 127,
+          90, 163, 234, 32, 24, 114, 45, 54, 111, 195, 162, 21, 44,
+          158, 141, 89, 69, 193, 81, 166, 52, 171, 9, 70]
 
 VERSION = 1.0
 FPS=64
-greek="αβγδε" # the first 5 letters of the Greek alphabet
 
 def current_fps():
     "Returns rate the game is running at in fps."
@@ -71,6 +70,10 @@ def resize_sprite(sprite, scale):
     sprite.bbox_x = -sprite.origin_x
     sprite.bbox_y = -sprite.origin_y
 
+def draw_all_frames(base,over,x=0,y=0,blendmode=sge.BLEND_NORMAL):
+    for f in range(base.frames):
+        base.draw_sprite(over,f,x,y,frame=f,blend_mode=blendmode)
+
 def recolor(sprite, col1, texsprite, col2, rel):
     """Recolors sprite 1 with col1, texsprite with col2, then overlays resulting
        texsprite onto resulting sprite. 'rel' is a number that represents the
@@ -78,6 +81,7 @@ def recolor(sprite, col1, texsprite, col2, rel):
     # overlay main sprite color
     sprite.draw_rectangle(0,0,sprite.width,sprite.height,fill=col1,
                           blend_mode=sge.BLEND_RGBA_MULTIPLY)
+    
     # white temp sprite same size as texture
     temp = gfx.Sprite(width=texsprite.width,height=texsprite.height)
     temp.draw_rectangle(0,0,temp.width,temp.height,fill=gfx.Color('white'))
@@ -89,12 +93,13 @@ def recolor(sprite, col1, texsprite, col2, rel):
     # Recolor textured parts of image
     texsprite.draw_rectangle(0,0,temp.width,temp.height,fill=col2,
                              blend_mode=sge.BLEND_RGBA_MULTIPLY)
+    
     # After next line, temp is now a white box with color texture overlaid
     temp.draw_sprite(texsprite,0,0,0)
     
     # Overlay result to current sprite using multiply to get rid of the white
     sprite.draw_sprite(temp,0,rel,rel,
-                            blend_mode=sge.BLEND_RGBA_MULTIPLY)
+                            blend_mode=sge.BLEND_RGB_MULTIPLY)
 
 def randcol():
     """Returns a random color with no alpha."""
@@ -155,8 +160,10 @@ def gen_secondary_col(primary):
     """Uses a color hash to generate a secondary color given the primary.
        Always produces the same output on a given input, but comparatively
        the output color can appear to be totally random."""
-    r,g,b = primary.red,primary.green,primary.blue
-    return primary
+    rgb = [primary.red,primary.green,primary.blue]
+    for channel in rgb:
+        channel = hash[channel]
+    return gfx.Color(tuple(rgb))
 
 def calc_bbox(sprite, frame):
     """Returns a 4-tuple containing bounding box x,y,width, and height

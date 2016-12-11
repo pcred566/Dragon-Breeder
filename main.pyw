@@ -93,7 +93,7 @@ bglayers = [gfx.BackgroundLayer(bgspr,0,0,repeat_left=True,repeat_right=True,
 background = sge.gfx.Background([], sge.gfx.Color("white"))
 
 # Object/sprite
-sprites = [gfx.Sprite("base_dragon","sprites",fps=FPS) for i in range(10)]
+sprites = [gfx.Sprite("base_dragon","sprites",fps=2) for i in range(10)]
 texsprite = gfx.Sprite("tex_speckles","sprites",fps=FPS)
 for sprite in sprites:
     resize_sprite(sprite,1)
@@ -101,14 +101,15 @@ for sprite in sprites:
     if choice([1,2]) == 1:
         texsprite.flip()
     # recolor params
-    colpri = saturated_randcol(randint(100,255))#desaturated_randcol(12,randint(35,100))
+    colpri = saturated_randcol(randint(200,255))#desaturated_randcol(12,randint(35,100))
     colsec = gen_secondary_col(colpri)
     
     rel = randint(-texsprite.width//2,0)
     
     recolor(sprite,colpri,texsprite,colsec,rel)
-    eyes = gfx.Sprite("base_eyes","sprites",fps=FPS)
-    sprite.draw_sprite(eyes,0,0,0)
+    eyes = gfx.Sprite("base_eyes","sprites",fps=2)
+    draw_all_frames(sprite,eyes,7,11)
+
     
 objects = [Draggable(w//2,h//2,z=i,sprite=sprites[i]) for i in range(10)]
 
