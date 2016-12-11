@@ -1,8 +1,11 @@
+import os
 import sge
-import pickle
 import gzip
+import pickle
+
 from sge import gfx,dsp,collision
 from random import randrange,randint,choice
+from appdirs import user_data_dir,user_cache_dir
 
 hash = [168, 175, 53, 13, 167, 180, 50, 255, 102, 62,
           57, 174, 91, 55, 244, 97, 241, 14, 34, 178,
@@ -27,16 +30,35 @@ hash = [168, 175, 53, 13, 167, 180, 50, 255, 102, 62,
           90, 163, 234, 32, 24, 114, 45, 54, 111, 195, 162, 21, 44,
           158, 141, 89, 69, 193, 81, 166, 52, 171, 9, 70]
 
-VERSION = 1.0
+VERSION = "1.0"
 FPS = 64
-SAVEFILE = "savefile"
+appname = "Dragon Breeder v"+VERSION
+author = '566 Games'
+SAVEDIR = user_data_dir(appname,author)
+
 dragons = []
+rooms = []
 inventory = ['a','b','c']
 money = [0] # god damn python integer immutability
 settings = {}
+w = 320 # convenience, width of window
+h = 240 # convenience, height of window
 
 def save_game(num=1):
-    outfile = gzip.open(SAVEFILE+str(num)+'.save','wb')
+    """Writes all information required to restore a profile to the
+       savefile location, given by 'appdirs' module. Also, if the file
+       or write directory does not yet exist, the method will create
+       them as necessary."""
+    if not os.path.exists(SAVEDIR):
+        os.makedirs(SAVEDIR)
+    savefile = os.path.join(SAVEDIR,'file'+str(num)+'.save')
+    outfile = gzip.open(savefile,'wb')
+    global dragons
+    global rooms
+    global inventory
+    global money
+    global settings
+    
     pickle.dump(dragons,outfile)
     pickle.dump(inventory,outfile)
     pickle.dump(money,outfile)
@@ -44,14 +66,18 @@ def save_game(num=1):
     outfile.close()
         
 def load_game(num=1):
-    ''' clear all old data '''
-    infile = gzip.open(SAVEFILE+str(num)+'.save','rb')
+    '''Maybe should be called only at beginning of game?
+      probably yea lol. Also only call it after saving the file haha'''
+    savefile = os.path.join(SAVEDIR,'file'+str(num)+'.save')
+    infile = gzip.open(savefile,'rb')
     global dragons
+    global rooms
     global inventory
     global money
     global settings
     
     del dragons[:]
+    del rooms[:]
     del inventory[:]
     money[0] = 0
     settings.clear()
@@ -83,6 +109,11 @@ def top_obj(obj,x,y):
     for i in range(len(colliding)):
         top = colliding[i] if colliding[i].z > top.z else top
     return top
+
+def color_distance(col1,col2):
+    """Takes two gfx.Color objects and compares them, returning a number
+       between 0 and 255 representing how close the colors are to each other."""
+    
 
 def resize_sprite(sprite, scale):
     """Resizes the input sprite to 'scale' dimensions; correctly places origin
@@ -135,6 +166,11 @@ def recolor(sprite, col1, texsprite, col2, rel):
     sprite.draw_sprite(temp,0,rel,rel,
                             blend_mode=sge.BLEND_RGB_MULTIPLY)
 
+def overlay(sprite,col):
+    """Uses RGBA Multiply to overlay 'col' onto 'sprite'."""
+    sprite.draw_rectangle(0,0,sprite.width,sprite.height,fill=col,
+                             blend_mode=sge.BLEND_RGBA_MULTIPLY)
+
 def randcol():
     """Returns a random color with no alpha."""
     col = [randint(0,255) for _ in range(3)]
@@ -157,7 +193,7 @@ def saturated_randcol(value=255):
 
 def pastel_randcol():
     """Returns a random color that is guaranteed to have low saturation
-       and medium-to-high brightness."""
+       and high brightness like a pastel."""
     # begin with saturated then desaturate
     col = saturated_randcol()
     offset = 175

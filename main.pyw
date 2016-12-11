@@ -6,7 +6,7 @@ class Game(dsp.Game):
 
     def event_step(self,rt,dt):
         # following line draws region main gameplay occurs in
-        #self.project_rectangle(4,4,w*2//3,h*2//3,fill=gfx.Color('white'))
+        # self.project_rectangle(4,4,w*2//3,h*2//3,fill=gfx.Color('white'))
         bglayers[0].x += 1
         bglayers[0].y += 1
         
@@ -20,6 +20,14 @@ class Game(dsp.Game):
             self.event_close()
         elif key in ('p', 'enter'):
             self.pause()
+        elif key == 'a':
+            scale = self.scale
+            if scale == 2: # CYCLE BEGIN HERE
+                self.scale = 3
+            if scale == 3: # OOH AAH
+                self.scale = 4
+            if scale == 4: # CYCLE END HERE
+                self.scale = 2
 
     def event_close(self):
         self.end()
@@ -42,8 +50,8 @@ class Draggable(sge.dsp.Object):
     def __init__(self,*args,**kwargs):
 
         super().__init__(*args,**kwargs)
-        #bbox = calc_bbox(self.sprite,0) # the line was long lol
-        #self.bbox_x,self.bbox_y,self.bbox_width,self.bbox_height = bbox
+        bbox = calc_bbox(self.sprite,0) # the line was long lol
+        self.bbox_x,self.bbox_y,self.bbox_width,self.bbox_height = bbox
         self.grabbing = False
         self.offx = 0
         self.offy = 0
@@ -74,59 +82,37 @@ class Draggable(sge.dsp.Object):
         if button == 'left':
             self.grabbing = False
 
-w = 320 # convenience, width of window
-h = 240 # convenience, height of window
+class DragonObj(Draggable):
+    """Internally contains a Dragon object from which it pulls its attributes."""
+    def __init__(self,dragon):
+        self.dragon = dragon
+        if self.dragon == None:
+            self.dragon = Dragon(w//2,h//2)
+            
+        super().__init__(self.dragon.x,self.dragon.y,
+                         sprite=self.dragon.get_sprite())
 
 # Create Game object
-Game(width=w, height=h, fps=FPS, window_text="Dragon Breeder v"+str(VERSION),
-     scale=4, scale_method="noblur")
+Game(width=w, height=h, fps=FPS, window_text=appname,
+     scale=3, scale_method="noblur")
 mouse = sge.game.mouse
 
 
 # Load font
-font = gfx.Font("pixel fonts/Quadratic.ttf", size=13)
-lfont = gfx.Font("pixel fonts/Quadratic.ttf", size=26)
+font = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=13)
+lfont = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=26)
 
 # Load backgrounds
 bgspr = gfx.Sprite("bubble","backgrounds",fps=FPS,origin_x=64,origin_y=64)
 bglayers = [gfx.BackgroundLayer(bgspr,0,0,repeat_left=True,repeat_right=True,
                               repeat_up=True,repeat_down=True)]
-background = sge.gfx.Background([], sge.gfx.Color("white"))
+background = sge.gfx.Background(bglayers, sge.gfx.Color("white"))
 
-# Object/sprite
-sprites = [gfx.Sprite("base_dragon","sprites",fps=2) for i in range(10)]
-texsprite = gfx.Sprite("tex_speckles","sprites",fps=FPS)
-for sprite in sprites:
-    #resize_sprite(sprite,1)
-
-    if choice([1,2]) == 1:
-        texsprite.flip()
-    # recolor params
-    colpri = saturated_randcol(randint(200,255))#desaturated_randcol(12,randint(35,100))
-    colsec = gen_secondary_col(colpri)
-    
-    rel = randint(-texsprite.width//2,0)
-    
-    recolor(sprite,colpri,texsprite,colsec,rel)
-    eyes = gfx.Sprite("base_eyes","sprites",fps=2)
-    draw_all_frames(sprite,eyes,7,11)
-
-    
-objects = [Draggable(w//2,h//2,z=i,sprite=sprites[i]) for i in range(10)]
+load_game()
+#dragons.extend([Dragon(w//2,h//2) for i in range(10)])
+objects = [DragonObj(d) for d in dragons]
+#save_game()
 
 # Create rooms
-views = [dsp.View(0,0)]
-sge.game.start_room = sge.dsp.Room(objects, views=views, background=background)
-
+sge.game.start_room = sge.dsp.Room(objects, background=background)
 sge.game.start()
-
-#dragons.extend([Dragon("") for _ in range(10)])
-#settings.update({'swagcount':4,"berries":20})
-load_game()
-for dragon in dragons:
-    print(dragon.rank)
-
-print(dragons)
-print(inventory)
-print(money)
-print(settings)
