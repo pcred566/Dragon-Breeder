@@ -1,7 +1,9 @@
 import sge
+import pickle
+import gzip
 from sge import gfx,dsp,collision
 from random import randrange,randint,choice
- 
+
 hash = [168, 175, 53, 13, 167, 180, 50, 255, 102, 62,
           57, 174, 91, 55, 244, 97, 241, 14, 34, 178,
           161, 251, 104, 206, 31, 60, 198, 15, 235, 144,
@@ -26,7 +28,39 @@ hash = [168, 175, 53, 13, 167, 180, 50, 255, 102, 62,
           158, 141, 89, 69, 193, 81, 166, 52, 171, 9, 70]
 
 VERSION = 1.0
-FPS=64
+FPS = 64
+SAVEFILE = "savefile"
+dragons = []
+inventory = ['a','b','c']
+money = [0] # god damn python integer immutability
+settings = {}
+
+def save_game(num=1):
+    outfile = gzip.open(SAVEFILE+str(num)+'.save','wb')
+    pickle.dump(dragons,outfile)
+    pickle.dump(inventory,outfile)
+    pickle.dump(money,outfile)
+    pickle.dump(settings,outfile)
+    outfile.close()
+        
+def load_game(num=1):
+    ''' clear all old data '''
+    infile = gzip.open(SAVEFILE+str(num)+'.save','rb')
+    global dragons
+    global inventory
+    global money
+    global settings
+    
+    del dragons[:]
+    del inventory[:]
+    money[0] = 0
+    settings.clear()
+        
+    dragons.extend(pickle.load(infile))
+    inventory.extend(pickle.load(infile))
+    money[0] = pickle.load(infile)[0]
+    settings.update(pickle.load(infile))
+    infile.close()
 
 def current_fps():
     "Returns rate the game is running at in fps."
@@ -230,4 +264,3 @@ def calc_bbox(sprite, frame):
     bbox_y -= sprite.origin_y
    
     return bbox_x, bbox_y, bbox_width, bbox_height
-

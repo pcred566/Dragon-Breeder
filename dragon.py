@@ -9,11 +9,11 @@ sexes = (MALE,FEMALE)
 sexualities = (BI,MALE,FEMALE)
 greek={'alpha':"α", 'beta': "β", 'gamma':"γ", 'delta':"δ", 'epsilon':"ε"}
 ages = ('egg','juvenile','adult')
-states = ('neutral','walking','sleeping','eating','hungry','affection','mating','pregnant','dragging')
+states = ('neutral','walking','sleeping','eating','hungry','affection','mating','pregnant')
 textures = ('stripes','speckles')
 class Dragon():
 
-    def __init__(self,name,sex,rank,dominance=None,attractedto=None,happiness=None,parents=None,
+    def __init__(self,name,sex=None,rank=None,dominance=None,attractedto=None,happiness=None,parents=None,
                  primary_col=None,eye_col=None,state='neutral',pregnant=False,age=None,texture=None,
                  toffset=None,flip=False,mirror=False,mate=None,mate_attraction=None):
         """If this method is called with as few parameters as is permissible, the system will
@@ -25,13 +25,21 @@ class Dragon():
             self.name = name
 
         if sex == None:
-            sex = choice(sexes)
+            self.sex = choice(sexes)
         else:
             self.sex = sex
             if sex not in sexes:
                 print("Unknown sex.")
-
-        if rank in greek.keys():
+                
+        if rank == None:
+            r = randint(1,100)
+            if r == 1:
+                self.rank = greek['alpha']  # 1% chance for alpha
+            if r in range(2,21):
+                self.rank = greek['beta']   # 20% chance for beta
+            else:
+                self.rank = greek['gamma'] # 80% chance for gamma
+        elif rank in greek.keys():
             self.rank = greek[rank]
         else:
             self.rank = None
@@ -43,7 +51,7 @@ class Dragon():
             self.dominance = clamp(dominance,1,8)
 
         if attractedto == None:
-            self.attractedto = choice(sexualitites)
+            self.attractedto = choice(sexualities)
         else:
             self.attractedto = attractedto
             if attractedto not in sexualities:
@@ -176,9 +184,6 @@ class Dragon():
 
     def get_texture(self):
         return gfx.Sprite("tex_"+self.texture,"sprites",fps=FPS)
-        
 
 md = Dragon(name="",sex=MALE,rank='alpha',attractedto=BI,dominance=8)
 fd = Dragon(name="",sex=FEMALE,rank='gamma',attractedto=MALE,dominance=1)
-
-print (fd.compatibility(md))

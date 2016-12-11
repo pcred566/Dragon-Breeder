@@ -1,5 +1,6 @@
 # Imports sge, sge.gfx, sge.dsp, and random modules, along with utility functions.
 from utils import *
+from dragon import *
 
 class Game(dsp.Game):
 
@@ -96,7 +97,7 @@ background = sge.gfx.Background([], sge.gfx.Color("white"))
 sprites = [gfx.Sprite("base_dragon","sprites",fps=2) for i in range(10)]
 texsprite = gfx.Sprite("tex_speckles","sprites",fps=FPS)
 for sprite in sprites:
-    resize_sprite(sprite,1)
+    #resize_sprite(sprite,1)
 
     if choice([1,2]) == 1:
         texsprite.flip()
@@ -118,3 +119,14 @@ views = [dsp.View(0,0)]
 sge.game.start_room = sge.dsp.Room(objects, views=views, background=background)
 
 sge.game.start()
+
+#dragons.extend([Dragon("") for _ in range(10)])
+#settings.update({'swagcount':4,"berries":20})
+load_game()
+for dragon in dragons:
+    print(dragon.rank)
+
+print(dragons)
+print(inventory)
+print(money)
+print(settings)
