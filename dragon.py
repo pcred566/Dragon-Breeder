@@ -1,4 +1,5 @@
 from utils import *
+from time import time
 from sge.gfx import Sprite,Color
 from random import choice,randint
 
@@ -22,8 +23,8 @@ class Dragon():
         return False
     
     def __init__(self,x=None,y=None,name=None,sex=None,rank=None,dominance=None,attractedto=None,happiness=None,
-                 parents=None,primary_col=None,eye_col=None,state='neutral',pregnant=False,age=None,
-                 texture=None,toffset=None,flip=False,mirror=False,mate=None,mate_attraction=None):
+                 parents=None,primary_col=None,eye_col=None,state='neutral',pregnant=False,age=None,fertility=None,
+                 facing=None,canmate=False,texture=None,toffset=None,flip=None,mirror=None,mate=None,mate_attraction=None):
         """If this method is called with as few parameters as is permissible, the system will
            generate a fully wild dragon. 'rank' should be one of (alpha,beta,gamma). All colors
            in this class including primary, secondary and eye must are tuples and must be passed
@@ -52,7 +53,7 @@ class Dragon():
             r = randint(1,100)
             if r <= 5:
                 self.rank = greek['alpha']  # 5% chance for alpha
-            elif r in range(6,26):
+            elif r in range(6,25):
                 self.rank = greek['beta']   # 20% chance for beta
             else:
                 self.rank = greek['gamma'] # 75% chance for gamma
@@ -82,7 +83,7 @@ class Dragon():
                 print("Unknown sexuality.")
 
         if happiness == None:
-            happiness = 3 # default
+            self.happiness = 3 # default
         else:
             self.happiness = clamp(happiness,1,8)
         
@@ -91,15 +92,13 @@ class Dragon():
         if primary_col == None:
             # color based on rank.
             if self.rank == greek['alpha']:
-                self.primary_col = tuple(saturated_randcol(value=randint(150,255)))
-            elif self.rank == greek['beta']:
                 self.primary_col = tuple(pastel_randcol())
+            elif self.rank == greek['beta']:
+                self.primary_col = tuple(desaturated_randcol(55,randint(140,160)))
             elif self.rank == greek['gamma']:
-                self.primary_col = tuple(desaturated_randcol(12,randint(35,100)))
+                self.primary_col = tuple(desaturated_randcol(20,randint(80,100)))
         else:
             self.primary_col = primary_col
-
-        self.secondary_col = tuple(gen_secondary_col(Color(self.primary_col)))
 
         if eye_col == None:
             self.eye_col = tuple(saturated_randcol())
@@ -116,7 +115,17 @@ class Dragon():
         self.pregnant = pregnant
         if self.sex == 'm':
             self.pregnant = False
-        
+
+        if age != None:
+            self.age = age
+        else:
+            self.age = ages[2]
+
+        if fertility == None:
+            self.fertility = randint(2,8)
+        else:
+            self.fertility = clamp(fertility,2,8)
+
         if texture == None:
             self.texture = choice(textures)
         else:
@@ -124,21 +133,22 @@ class Dragon():
             if texture not in textures:
                 print('Unknown texture input.')
 
+        self.canmate = canmate
+
+        if facing == None:
+            facing = choice([0,1]) # 1 is right, 0 is left
+        
+
         # IMPORTANT: toffset to remain null because it's based on sprite size
         self.toffset = toffset # if null, remains null until sprite generator decides
 
         if flip == None:
-            self.flip = choice(True,False)
+            self.flip = choice([True,False])
         else: self.flip = flip
 
         if mirror == None:
-            self.mirror = choice(True,False)
+            self.mirror = choice([True,False])
         else: self.mirror = mirror
-        
-        if age != None:
-            self.age = age
-        else:
-            self.age = ages[2]
         
         self.mate = mate
         self.mate_attraction = mate_attraction
@@ -169,11 +179,13 @@ class Dragon():
         ###Additive/subtractive characteristics###
         if self.rank > other.rank:
             attractiveness += (ord(self.rank) - ord(other.rank))*2 # difference in rank, by ASCII distance
+        elif self.rank == other.rank:
+            attractiveness += 1
         else:
             attractiveness += ord(self.rank) - ord(other.rank)
         
-        attractiveness += abs(self.dominance-other.dominance+1) # favors large gaps in dominance
-        attractiveness = 0 if attractiveness < 0 else attractiveness # sad day
+        attractiveness += abs(self.dominance-other.dominance+1)//2 # favors large gaps in dominance
+        attractiveness += other.fertility-2 # Normalize to lowest fertility
 
         ####Exclusive dependent characteristics####
         if self.sex == 'm' and self.attractedto == 'f' and other.sex == 'f':
@@ -182,10 +194,15 @@ class Dragon():
         if self.sex == 'f' and other.sex == 'm':
             if self.rank > other.rank: # this means self actually has lower rank, thank you ASCII table
                 attractiveness += 2 # female additional attractedness to higher-ranked males
-            else: attractiveness -= 1
+            else: attractiveness -= 1 # even lower attraction if the other is lower ranked haha
         
         if self.texture == other.texture:
             attractiveness += 1 # attracted to dragons of the same rough appearance
+
+        if other.happiness >= 5:
+            attractiveness += 1 # attracted to dragons with high happiness
+
+        attractiveness = 0 if attractiveness < 0 else attractiveness # sad day
 
         return attractiveness
 
@@ -195,7 +212,7 @@ class Dragon():
            chance to reject on low compatibility. Called internally by propose function."""
         acc = False
         base = self.compatibility(other)
-        chance = randint(0,12)
+        chance = randint(0,15)
         if base >= chance:
             acc = True
         return acc
@@ -219,28 +236,35 @@ class Dragon():
            in order to pickle the entire list of dragons, no non-primitive
            types can be used."""
 
-        # default sprite
-        sprite = Sprite("base_dragon","sprites",fps=2)
+        # default void
+        sprite = None
         # base colors
         pricol = Color(self.primary_col)
-        seccol = Color(self.secondary_col)
         eyecol = Color(self.eye_col)
         # texture sprite
         texsprite = self.get_texture()
 
         if self.state == 'neutral':
-            
-            recolor(sprite,pricol,texsprite,seccol,self.toffset)
+            sprite = Sprite("base_dragon","sprites",fps=2)
+            recolor(sprite,pricol,texsprite,self.toffset)
             eyes = Sprite("base_eyes","sprites")
             overlay(eyes,eyecol)
-            draw_all_frames(sprite,eyes,7,11)
+            draw_all_frames(sprite,eyes,6,9)
             
-        elif state == 'walking':
+        elif self.state == 'walking':
             pass
+        
         elif self.state == 'sleeping':
-            pass
+            sprite = Sprite("dragon_sleeping","sprites",fps=1)
+            recolor(sprite,pricol,texsprite,self.toffset+1)
+            
         elif self.state == 'eating':
-            pass
+            sprite = Sprite("dragon_eating","sprites",fps=2)
+            recolor(sprite,pricol,texsprite,self.toffset)
+            eyes = Sprite("base_eyes","sprites")
+            overlay(eyes,eyecol)
+            draw_all_frames(sprite,eyes,4,18)
+            
         elif self.state == 'hungry':
             pass
         elif self.state == 'affection':
@@ -252,7 +276,7 @@ class Dragon():
             # no sprite change?
             pass
 
-        resize_sprite(sprite,1)
+        resize_sprite(sprite,1) # centralize
         return sprite
 
     def get_texture(self):
@@ -272,9 +296,69 @@ class Dragon():
 def offspring(parent1,parent2):
     md = parent1 if parent1.sex == 'm' else parent2
     fd = parent1 if md != parent1 else parent2
+
+def get_mate_anim(dom,sub,closeup=False):
+    '''FULLY IMPLEMENTED! Now just add all the animation names to the appropriate lists haha'''
     
+    # autoswap to correctly select the dominant dragon.
+    if dom.dominance < sub.dominance:
+        dom, sub = sub, dom
+    
+    maledom = ['doggystyle']
+    femdom = ['doggystyle'] # cowgirl, reverse cowgirl
+    # lesbian = []  ? not sure if this is needed
+    animchoice = ""
+    
+    if closeup:
+        if dom.sex != sub.sex and dom.sex == 'm': # straight, dominant male
+            animchoice = '' # straight doggystyle/missionary closeup
+        elif dom.sex != sub.sex and dom.sex == 'f': # straight, dominant female
+            animchoice = '' # straight cowgirl closeup
+        elif dom.sex == sub.sex and dom.sex == 'm': # gay males
+            animchoice = '' # gay doggystyle/missionary closeup
+        else: # lesbians ;P
+            animchoice = '' # lesbian missionary/oral closeup
+    else:
+        if dom.sex != sub.sex and dom.sex == 'm': # straight, dominant male
+            animchoice = choice(maledom)
+        elif dom.sex != sub.sex and dom.sex == 'f': # straight, dominant female
+            animchoice = choice(femdom)
+        elif dom.sex == sub.sex and dom.sex == 'm': # gay males
+            animchoice = choice(maledom)# + "_gay" # CHECK NAME CONVENTION!
+        else: # lesbians ;P
+            animchoice = choice(femdom)# + "_lesbian" # not sure if it'll work like this but  we'll see
 
-md = Dragon(x=0,y=0,name="",texture='speckles',sex=MALE,rank='gamma',attractedto=FEMALE,dominance=8)
-fd = Dragon(x=0,y=0,name="",texture='speckles',sex=FEMALE,rank='beta',attractedto=MALE,dominance=1)
+    directory = os.path.join('sprites','mating')
+    matingsprite = gfx.Sprite(animchoice,directory,fps=8)
+    texpath = os.path.join('sprites','tex_')
+    d = Image.open(texpath+dom.texture+'.png').convert('RGBA')
+    s = Image.open(texpath+sub.texture+'.png').convert('RGBA')
+    domtex = d.load() # pixel data of dom texture
+    subtex = s.load() # same for sub
 
-#print(fd.compatibility(md))
+    s1 = time()
+    for i in range(len(matingsprite.rd['baseimages'])) :
+        baseimg = matingsprite.rd['baseimages'][i]
+        im_as_str = tostring(baseimg,"RGBA")
+        img = Image.frombytes("RGBA",baseimg.get_size(),im_as_str)
+        pix = img.load() # get pixel data from image for processing
+        
+        for j in range(img.size[0]):
+            for k in range(img.size[1]): # processing pixel data...
+                # replace dom color
+                if pix[j,k][0] == 64:
+                    pix[j,k] = dom.primary_col
+                    if domtex[j//2,k//2][3] > 0:
+                        pix[j,k] = tuple([clamp(q-20,0,255) for q in dom.primary_col])
+                # replace sub color
+                if pix[j,k][0] == 128:
+                    pix[j,k] = sub.primary_col
+                    if subtex[j//2,k//2][3] > 0:
+                        pix[j,k] = tuple([clamp(q-20,0,255) for q in sub.primary_col])
+                # replace dom eyecol
+                # replace sub eyecol
+        # Push result back into sprite
+        matingsprite.rd['baseimages'][i] = frombuffer(img.tobytes(),img.size,'RGBA')
+    s2 = time()
+    print(str(s2-s1)+' seconds')
+    return matingsprite

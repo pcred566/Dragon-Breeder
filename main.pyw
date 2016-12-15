@@ -4,23 +4,17 @@ from dragon import *
 
 class Game(dsp.Game):
 
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+    
     def event_step(self,rt,dt):
         # following line draws region main gameplay occurs in
-        # self.project_rectangle(4,4,w*2//3,h*2//3,fill=gfx.Color('white'))
         bglayers[0].x += 1
         bglayers[0].y += 1
-        
-        pass
 
     def event_key_press(self, key, char):
 
         if key == 'f11':
-            self.fullscreen = not self.fullscreen
-        elif key == 'escape':
-            self.event_close()
-        elif key in ('p', 'enter'):
-            self.pause()
-        elif key == 'a':
             scale = self.scale
             if scale == 2: # CYCLE BEGIN HERE
                 self.scale = 3
@@ -28,6 +22,11 @@ class Game(dsp.Game):
                 self.scale = 4
             if scale == 4: # CYCLE END HERE
                 self.scale = 2
+        elif key == 'escape':
+            self.event_close()
+        elif key in ('p', 'enter'):
+            self.pause()
+            
 
     def event_close(self):
         self.end()
@@ -50,8 +49,8 @@ class Draggable(sge.dsp.Object):
     def __init__(self,*args,**kwargs):
 
         super().__init__(*args,**kwargs)
-        bbox = calc_bbox(self.sprite,0) # the line was long lol
-        self.bbox_x,self.bbox_y,self.bbox_width,self.bbox_height = bbox
+        #bbox = calc_bbox(self.sprite,0) # the line was long lol
+        #self.bbox_x,self.bbox_y,self.bbox_width,self.bbox_height = bbox
         self.grabbing = False
         self.offx = 0
         self.offy = 0
@@ -84,14 +83,14 @@ class Draggable(sge.dsp.Object):
 
 class DragonObj(Draggable):
     """Internally contains a Dragon object from which it pulls its attributes."""
-    def __init__(self,dragon):
+    def __init__(self,dragon=None,z=0):
         self.dragon = dragon
         if self.dragon == None:
             self.dragon = Dragon(w//2,h//2)
-            
-        super().__init__(self.dragon.x,self.dragon.y,
+        super().__init__(self.dragon.x,self.dragon.y,z=z,
                          sprite=self.dragon.get_sprite())
 
+    
 # Create Game object
 Game(width=w, height=h, fps=FPS, window_text=appname,
      scale=3, scale_method="noblur")
@@ -106,12 +105,18 @@ lfont = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=26)
 bgspr = gfx.Sprite("bubble","backgrounds",fps=FPS,origin_x=64,origin_y=64)
 bglayers = [gfx.BackgroundLayer(bgspr,0,0,repeat_left=True,repeat_right=True,
                               repeat_up=True,repeat_down=True)]
-background = sge.gfx.Background(bglayers, sge.gfx.Color("white"))
+background = sge.gfx.Background([], sge.gfx.Color("white"))
 
-load_game()
-#dragons.extend([Dragon(w//2,h//2) for i in range(10)])
-objects = [DragonObj(d) for d in dragons]
+#load_game()
+dragons.extend([Dragon(w//2,h//2) for i in range(10)])
+objects = [DragonObj(z=i) for i in range(len(dragons))]
+for obj in objects:
+    pass#print(obj.dragon.rank,obj.dragon.primary_col)
+
+objects.append(dsp.Object(0,0,sprite=get_mate_anim(objects[8].dragon,objects[9].dragon)))
+
 #save_game()
+
 
 # Create rooms
 sge.game.start_room = sge.dsp.Room(objects, background=background)

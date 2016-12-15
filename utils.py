@@ -3,11 +3,13 @@ import sge
 import gzip
 import pickle
 
+from PIL import Image
 from sge import gfx,dsp,collision
 from random import randrange,randint,choice
+from pygame.image import tostring, frombuffer
 from appdirs import user_data_dir,user_cache_dir
 
-hash = [168, 175, 53, 13, 167, 180, 50, 255, 102, 62,
+hashtable = [168, 175, 53, 13, 167, 180, 50, 255, 102, 62,
           57, 174, 91, 55, 244, 97, 241, 14, 34, 178,
           161, 251, 104, 206, 31, 60, 198, 15, 235, 144,
           38, 64, 187, 106, 72, 149, 214, 110, 186, 131,
@@ -38,9 +40,10 @@ SAVEDIR = user_data_dir(appname,author)
 
 dragons = []
 rooms = []
-inventory = ['a','b','c']
+inventory = {}
 money = [0] # god damn python integer immutability
 settings = {}
+
 w = 320 # convenience, width of window
 h = 240 # convenience, height of window
 
@@ -78,12 +81,13 @@ def load_game(num=1):
     
     del dragons[:]
     del rooms[:]
-    del inventory[:]
+    inventory.clear()
     money[0] = 0
     settings.clear()
         
     dragons.extend(pickle.load(infile))
-    inventory.extend(pickle.load(infile))
+    print(dragons)
+    inventory.update(pickle.load(infile))
     money[0] = pickle.load(infile)[0]
     settings.update(pickle.load(infile))
     infile.close()
@@ -113,7 +117,7 @@ def top_obj(obj,x,y):
 def color_distance(col1,col2):
     """Takes two gfx.Color objects and compares them, returning a number
        between 0 and 255 representing how close the colors are to each other."""
-    
+    pass
 
 def resize_sprite(sprite, scale):
     """Resizes the input sprite to 'scale' dimensions; correctly places origin
@@ -136,10 +140,11 @@ def resize_sprite(sprite, scale):
     sprite.bbox_y = -sprite.origin_y
 
 def draw_all_frames(base,over,x=0,y=0,blendmode=sge.BLEND_NORMAL):
+    """Draws all frames of 'over' onto 'base'."""
     for f in range(base.frames):
         base.draw_sprite(over,f,x,y,frame=f,blend_mode=blendmode)
 
-def recolor(sprite, col1, texsprite, col2, rel):
+def recolor(sprite, col1, texsprite, rel):
     """Recolors sprite 1 with col1, texsprite with col2, then overlays resulting
        texsprite onto resulting sprite. 'rel' is a number that represents the
        location the texture should be drawn relative to sprite when it is overlaid."""
@@ -156,7 +161,7 @@ def recolor(sprite, col1, texsprite, col2, rel):
                              blend_mode=sge.BLEND_RGB_MAXIMUM)
     
     # Recolor textured parts of image
-    texsprite.draw_rectangle(0,0,temp.width,temp.height,fill=col2,
+    texsprite.draw_rectangle(0,0,temp.width,temp.height,fill=col1,
                              blend_mode=sge.BLEND_RGBA_MULTIPLY)
     
     # After next line, temp is now a white box with color texture overlaid
@@ -211,29 +216,25 @@ def pastel_randcol():
 def desaturated_randcol(saturation,brightness=100):
     """Returns a random color that is guaranteed to have low-ish saturation.
        Brightness of output is ceiling-ed at 253 to contrast with pure white,
-       and floor-ed at 10 to contrast with pure black (outlines of sprites etc.)
+       and floor-ed at 40 to contrast with pure black (outlines of sprites etc.)
        The 'saturation' input controls how desaturated the color should be.
        This value should both be in the range (0,255)."""
     # begin with greyscale
-    brightness = clamp(brightness,25,255)
+    brightness = clamp(brightness,40,255)
     sat = clamp(saturation,0,255-brightness)
     col = [brightness,brightness,brightness]
-    for i in range(3):
-        col[i] += randint(-sat,sat)
-        col[i] += brightness
-        col[i] = min(col[i],253)
-        col[i] = max(col[i],0)
     
-    return gfx.Color(tuple(col))
+    for i in range(3):
+        r = randint(-sat,sat)
+        if abs(r-brightness) < sat//2: # minimum saturation = sat / 2
+            if r < 0:
+                r = randint(-sat,-sat//2)
+            else:
+                r = randint(sat//2,sat)
+        col[i] += r
+        col[i] = clamp(col[i],50,253)
 
-def gen_secondary_col(primary):
-    """Uses a color hash to generate a secondary color given the primary.
-       Always produces the same output on a given input, but comparatively
-       the output color can appear to be totally random."""
-    rgb = [primary.red,primary.green,primary.blue]
-    for channel in rgb:
-        channel = hash[channel]
-    return gfx.Color(tuple(rgb))
+    return gfx.Color(col)
 
 def calc_bbox(sprite, frame):
     """Returns a 4-tuple containing bounding box x,y,width, and height
