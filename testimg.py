@@ -8,7 +8,7 @@ class Game(dsp.Game):
 
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.spr = gfx.Sprite("mating_doggystyle","sprites",fps=8)
+        self.spr = gfx.Sprite("doggystyle","sprites\\mating",fps=8)
         tex = Image.open('sprites/tex_speckles.png').load()
         
         for i in range(len(self.spr.rd['baseimages'])):

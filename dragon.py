@@ -1,7 +1,5 @@
-from utils import *
 from time import time
-from sge.gfx import Sprite,Color
-from random import choice,randint
+from colutils import *
 
 BI = 'b'
 MALE = 'm'
@@ -35,7 +33,7 @@ class Dragon():
         if x == None:
             self.x = randint(0,w)
         if y == None:
-            self.y = randint(0,w)
+            self.y = 0 # HEIGHT RELATIVE TO GROUND PLANE IN VIEW THING
                         
         if name == None:
             self.name = ""
@@ -113,7 +111,7 @@ class Dragon():
                 print("Unknown state input.")
 
         self.pregnant = pregnant
-        if self.sex == 'm':
+        if self.sex == MALE:
             self.pregnant = False
 
         if age != None:
@@ -159,12 +157,13 @@ class Dragon():
           both on the calling dragon and 'other'. Both must have age == 'adult'.'''
         if self.age != ages[2] or other.age != ages[2]:
             return False
-        if self.attractedto == 'b': # bi
-            if other.attractedto == 'b' or other.attractedto == self.sex:
+        
+        if self.attractedto == BI: # self is bisexual
+            if other.attractedto == BI or other.attractedto == self.sex:
                 return True
             
-        if other.attractedto == 'b': # bi
-            if self.attractedto == 'b' or self.attractedto == other.sex:
+        if other.attractedto == BI: # other is bisexual
+            if self.attractedto == BI or self.attractedto == other.sex:
                 return True
 
         if other.attractedto == self.sex and self.attractedto == other.sex:
@@ -194,10 +193,10 @@ class Dragon():
         if self.sex == 'f' and other.sex == 'm':
             if self.rank > other.rank: # this means self actually has lower rank, thank you ASCII table
                 attractiveness += 2 # female additional attractedness to higher-ranked males
-            else: attractiveness -= 1 # even lower attraction if the other is lower ranked haha
+            else: attractiveness -= 1 # even lower attraction if the other is lower ranked haha rekt
         
         if self.texture == other.texture:
-            attractiveness += 1 # attracted to dragons of the same rough appearance
+            attractiveness += 1 # attracted to dragons of the same general appearance
 
         if other.happiness >= 5:
             attractiveness += 1 # attracted to dragons with high happiness
@@ -228,56 +227,6 @@ class Dragon():
             return True
         else:
             return False
-    
-    def get_sprite(self):
-        """Must be called after sge.game has been initialized.
-           Returns a sprite based on the dragon's current state.
-           This sprite is not saved as a part of this class because
-           in order to pickle the entire list of dragons, no non-primitive
-           types can be used."""
-
-        # default void
-        sprite = None
-        # base colors
-        pricol = Color(self.primary_col)
-        eyecol = Color(self.eye_col)
-        # texture sprite
-        texsprite = self.get_texture()
-
-        if self.state == 'neutral':
-            sprite = Sprite("base_dragon","sprites",fps=2)
-            recolor(sprite,pricol,texsprite,self.toffset)
-            eyes = Sprite("base_eyes","sprites")
-            overlay(eyes,eyecol)
-            draw_all_frames(sprite,eyes,6,9)
-            
-        elif self.state == 'walking':
-            pass
-        
-        elif self.state == 'sleeping':
-            sprite = Sprite("dragon_sleeping","sprites",fps=1)
-            recolor(sprite,pricol,texsprite,self.toffset+1)
-            
-        elif self.state == 'eating':
-            sprite = Sprite("dragon_eating","sprites",fps=2)
-            recolor(sprite,pricol,texsprite,self.toffset)
-            eyes = Sprite("base_eyes","sprites")
-            overlay(eyes,eyecol)
-            draw_all_frames(sprite,eyes,4,18)
-            
-        elif self.state == 'hungry':
-            pass
-        elif self.state == 'affection':
-            pass
-        elif self.state == 'mating':
-            pass
-
-        if self.pregnant:
-            # no sprite change?
-            pass
-
-        resize_sprite(sprite,1) # centralize
-        return sprite
 
     def get_texture(self):
         
@@ -294,71 +243,55 @@ class Dragon():
         return texsprite
     
 def offspring(parent1,parent2):
+    """Returns the offspring of the two input dragons as an egg."""
     md = parent1 if parent1.sex == 'm' else parent2
     fd = parent1 if md != parent1 else parent2
-
-def get_mate_anim(dom,sub,closeup=False):
-    '''FULLY IMPLEMENTED! Now just add all the animation names to the appropriate lists haha'''
+    ranks = (md.rank,fd.rank)
     
-    # autoswap to correctly select the dominant dragon.
-    if dom.dominance < sub.dominance:
-        dom, sub = sub, dom
-    
-    maledom = ['doggystyle']
-    femdom = ['doggystyle'] # cowgirl, reverse cowgirl
-    # lesbian = []  ? not sure if this is needed
-    animchoice = ""
-    
-    if closeup:
-        if dom.sex != sub.sex and dom.sex == 'm': # straight, dominant male
-            animchoice = '' # straight doggystyle/missionary closeup
-        elif dom.sex != sub.sex and dom.sex == 'f': # straight, dominant female
-            animchoice = '' # straight cowgirl closeup
-        elif dom.sex == sub.sex and dom.sex == 'm': # gay males
-            animchoice = '' # gay doggystyle/missionary closeup
-        else: # lesbians ;P
-            animchoice = '' # lesbian missionary/oral closeup
-    else:
-        if dom.sex != sub.sex and dom.sex == 'm': # straight, dominant male
-            animchoice = choice(maledom)
-        elif dom.sex != sub.sex and dom.sex == 'f': # straight, dominant female
-            animchoice = choice(femdom)
-        elif dom.sex == sub.sex and dom.sex == 'm': # gay males
-            animchoice = choice(maledom)# + "_gay" # CHECK NAME CONVENTION!
-        else: # lesbians ;P
-            animchoice = choice(femdom)# + "_lesbian" # not sure if it'll work like this but  we'll see
+    rand = randint(1,100) # percent.
+    if greek['gamma'] in ranks:
+        if ranks[0] == greek['gamma'] and ranks[1] == greek['gamma']: # 2 gammas
+            if rand <= 10: # 10%
+                rank = greek['alpha']
+            elif rand > 10 and rand <= 40: # 30%
+                rank = greeek['beta']
+            else: # 60%, #rekt
+                rank = greek['gamma']
+        elif greek['beta'] in ranks: # one beta, one gamma
+            if rand <= 10: # 10%
+                rank = greek['alpha']
+            elif rand > 10 and rand <= 50: # 40%
+                rank = greek['beta']
+            else: # 50%
+                rank = greek['gamma']
+        elif greek['alpha'] in ranks: # one beta, one alpha
+            if rand <= 20: # 20%
+                rank = greek['alpha']
+            elif rand > 20 and rand <= 50: # 30%
+                rank = greek['beta']
+            else: # 50%
+                rank = greek['gamma']
+                
+    elif greek['beta'] in ranks:
+        if ranks[0] == greek['beta'] and ranks[1] == greek['beta']: # 2 betas
+            if rand <= 10: # 20%
+                rank = greek['alpha']
+            elif rand > 10 and rand <= 40: # 30%
+                rank = greeek['beta']
+            else: # 60% chance for another gamma, #rekt
+                rank = greek['gamma']
+        elif greek['alpha'] in ranks: # one beta, one alpha
+            if rand <= 10:
+                rank = greek['alpha']
+            elif rand > 10 and rand <= 50: # 40% chance for beta
+                rank = greek['beta']
+            else:
+                rank = greek['gamma']
 
-    directory = os.path.join('sprites','mating')
-    matingsprite = gfx.Sprite(animchoice,directory,fps=8)
-    texpath = os.path.join('sprites','tex_')
-    d = Image.open(texpath+dom.texture+'.png').convert('RGBA')
-    s = Image.open(texpath+sub.texture+'.png').convert('RGBA')
-    domtex = d.load() # pixel data of dom texture
-    subtex = s.load() # same for sub
-
-    s1 = time()
-    for i in range(len(matingsprite.rd['baseimages'])) :
-        baseimg = matingsprite.rd['baseimages'][i]
-        im_as_str = tostring(baseimg,"RGBA")
-        img = Image.frombytes("RGBA",baseimg.get_size(),im_as_str)
-        pix = img.load() # get pixel data from image for processing
-        
-        for j in range(img.size[0]):
-            for k in range(img.size[1]): # processing pixel data...
-                # replace dom color
-                if pix[j,k][0] == 64:
-                    pix[j,k] = dom.primary_col
-                    if domtex[j//2,k//2][3] > 0:
-                        pix[j,k] = tuple([clamp(q-20,0,255) for q in dom.primary_col])
-                # replace sub color
-                if pix[j,k][0] == 128:
-                    pix[j,k] = sub.primary_col
-                    if subtex[j//2,k//2][3] > 0:
-                        pix[j,k] = tuple([clamp(q-20,0,255) for q in sub.primary_col])
-                # replace dom eyecol
-                # replace sub eyecol
-        # Push result back into sprite
-        matingsprite.rd['baseimages'][i] = frombuffer(img.tobytes(),img.size,'RGBA')
-    s2 = time()
-    print(str(s2-s1)+' seconds')
-    return matingsprite
+    else: # TWO ALPHAS
+        if rand <= 50: # 50%
+            rank = greek['alpha']
+        elif rand > 50 and rand <= 90: # 40%
+            rank = greek['beta']
+        else: # 10% (#REKT LMFAO)
+            rank = greek['gamma']
