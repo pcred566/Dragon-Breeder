@@ -12,34 +12,31 @@ from pygame.image import tostring, frombuffer
 from appdirs import user_data_dir,user_cache_dir
 
 VERSION = "1.0"
-FPS = 64
 appname = "Dragon Breeder v"+VERSION
 author = '566 Games'
 SAVEDIR = user_data_dir(appname,author)
 
 dragons = []
-rooms = []
 inventory = {}
 money = [0] # god damn python integer immutability
 settings = {}
-
-w = 320 # convenience, width of window
-h = 240 # convenience, height of window
+flags = {'seentutorial':False,'seenpeninfo':False} # update and maybe include this in the save later.
 
 ############### CLASS DEFINITIONS ###############
 class Game(dsp.Game):
 
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        global w,h
+        status = load_game()
+        if not status:
+            pass # new game.
         w = sge.game.width
         h = sge.game.height
     
     def event_step(self,rt,dt):
         # following line draws region main gameplay occurs in
         # self.project_rectangle(4,4,256,192,fill=gfx.Color('black'))
-        bglayers[0].x += 1
-        bglayers[0].y += 1
+        pass
 
     def event_key_press(self, key, char):
 
@@ -52,40 +49,52 @@ class Game(dsp.Game):
             if scale == 4: # CYCLE END HERE
                 self.scale = 2
         elif key == 'escape':
-            self.event_close()
-        elif key in ('p', 'enter'):
-            self.pause()
-            
+            if isinstance(sge.game.current_room, MainRoom):
+                LoadRoom(MenuRoom())
+            if isinstance(sge.game.current_room, MenuRoom):
+                self.event_close()       
 
     def event_close(self):
+        save_game()
         self.end()
 
-    def event_paused_key_press(self, key, char):
-        if key == 'escape':
-            self.event_close()
-        else:
-            self.unpause()
+class LoadRoom(dsp.Room):
+    
+    def __init__(self,nextroom,tr='wipe_matrix',tt=300):
+        super().__init__()
+        self.next = nextroom
+        framecount = ms_to_frames(tt)+2
+        self.alarms.update({'nextroom':framecount})
+        self.tr = tr; self.tt = tt
+        self.start(transition=tr,transition_time=tt)
 
-    def event_paused_close(self):
-        self.event_close()
-
+    def event_alarm(self,alarm_id):
+        if alarm_id == 'nextroom':
+            self.next.start(transition=self.tr,transition_time=self.tt)
+    
 class MenuRoom(dsp.Room):
 
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         for obj in self.objects[:]:
             self.remove(obj)
+
+        # Load backgrounds
+        bgspr = gfx.Sprite("bubble","backgrounds",fps=FPS,origin_x=64,origin_y=64)
+        self.bglayers = [gfx.BackgroundLayer(bgspr,0,0,repeat_left=True,repeat_right=True,
+                                      repeat_up=True,repeat_down=True)]
+        self.background = sge.gfx.Background(self.bglayers, sge.gfx.Color("white"))
+        
         self.logo = gfx.Sprite('logo','sprites')
         resize_sprite(self.logo,1)
         self.screen = 'MAIN'
-        self.buttons = ['START GAME','OPTIONS','HOW TO PLAY','SAVE & QUIT']
+        self.buttons = ['START GAME','OPTIONS','HOW TO PLAY','QUIT']
         sprites = [gfx.Sprite('button_rectangle','sprites',width=90,height=font.get_height('ASDF')+5)
                    for _ in self.buttons]
         for i in range(len(sprites)):
             sprites[i].draw_text(font,text=self.buttons[i],x=sprites[i].width//2,y=4,halign='center',
                                  color=gfx.Color('white'),anti_alias=False)
             resize_sprite(sprites[i],1)
-        
         objs = [dsp.Object(w//2,125+i*20,sprite=sprites[i]) for i in range(len(sprites))]
         for obj in objs:
             self.add(obj)
@@ -95,10 +104,10 @@ class MenuRoom(dsp.Room):
             colliding = collision.rectangle(sge.game.mouse.x,sge.game.mouse.y,1,1)
             if not colliding: return
             if colliding[0] == self.objects[0]: # Start game
-                MainRoom(background=gfx.Background(
-                    [],color=gfx.Color('white'))).start(transition='wipe_left',transition_time=300)
+                LoadRoom(MainRoom(background=gfx.Background([],color=gfx.Color
+                    ('white'))))
             elif colliding[0] == self.objects[1]: # Options
-                self.screen = 'OPTIONS'
+                pass#self.screen = 'OPTIONS'
             elif colliding[0] == self.objects[2]: # Tutorial
                 pass
             elif colliding[0] == self.objects[3]: # Quit
@@ -109,19 +118,255 @@ class MenuRoom(dsp.Room):
             
     def event_step(self,tp,dt):
         self.project_sprite(self.logo,0,w//2,80,1)
+        self.bglayers[0].x += 1
+        self.bglayers[0].y += 1
 
 class MainRoom(dsp.Room):
+    
     def __init__(self,*args,**kwargs):
+        
         super().__init__(*args,**kwargs)
+
         for obj in self.objects[:]:
             self.remove(obj)
-            
-        #load_game()
-        dragons.extend([Dragon(w//2,h//2) for i in range(10)])
-        objects = [DragonObj(z=i) for i in range(len(dragons))]
-        #objects.append(Draggable(0,0,sprite=get_mate_anim(objects[8].dragon,objects[9].dragon)))
-        self.objects.extend(objects)
-        #save_game()
+        self.ui = gfx.Sprite('ui','sprites')
+        self.ui_selected = gfx.Sprite('ui_selected','sprites')
+        self.scr = gfx.Sprite(width=720,height=480)
+        self.state = 'dragons'
+        
+        self.selected_dragon = None
+        self.hold_dragon = None
+        self.dragons_per_pen = 5
+        
+        self.info_text = Button(44,219,font,width=80) # Holds basic game info like stuff about selected dragon etc
+        self.text_input = None # An object that can be created as a text input which appears on screen
+        
+        self.dragonobjects = [DragonObj(dragon=dragons[i],z=i,room=self) for i in range(len(dragons))]
+        
+        self.currentpen = self.dragonobjects[0:self.dragons_per_pen] # default first five dragons
+
+        for d1 in self.dragonobjects:
+            # find the object corresponding to the dragon's mate and set it as the object mate
+            d1.mate = None # This is the object mate.
+            if d1.dragon.mate:
+                mt = d1.dragon.mate
+                for d2 in self.dragonobjects:
+                    if d2.dragon.as_dict() == mt:
+                        d1.mate = d2
+                        d2.mate = d1
+                        break # we're done once found
+
+        self.buttons = [Button(310,30,text="Dragons",action=self.switch_state,params='dragons'),
+                   Button(310,80,text="Lakeside",action=self.switch_state,params='lakeside'),
+                   Button(310,126,text="Store",action=self.switch_state,params='store'),
+                   Button(310,172,text="Forest",action=self.switch_state,params='forest'),
+                   Button(310,220,text="Exit",action=LoadRoom,params=MenuRoom())]
+        
+        self.objects.extend(self.currentpen)
+        self.objects.extend(self.buttons)
+        self.objects.append(self.info_text)
+        
+    def event_step(self,tp,dt):
+
+        for drobj in self.dragonobjects:
+            drobj.update()
+
+        # update interactions between dragons
+        for drobj in self.currentpen:
+            for other in self.currentpen:
+                if not drobj.interacted and drobj.facing != other.facing and \
+                       drobj.collision_point() == other.collision_point():
+                    drobj.interacted = other
+                    other.interacted = drobj
+                    #drobj.dragon.interact(other.dragon)
+                    #print('interaction occurred in current room.')
+                elif drobj.interacted and drobj.collision_point() == drobj.interacted.collision_point():
+                    pass # changes nothing
+                else:
+                    drobj.interacted = False
+
+        for i in range(len(self.dragonobjects)):
+            drobj = self.dragonobjects[i]
+            if drobj not in self.currentpen:
+                if randint(1,FPS*40) == 1: # interaction happens on average once every 40 seconds
+                    if drobj.mate:
+                        pass
+                        # interact with mate
+                        #drobj.dragon.interact(drobj.mate.dragon)
+                    else:
+                        pass
+                        print('interaction occurred in different room')
+                        # interact with random dragon from same pen
+                        #other = self.dragonobjects[choice(dragons_in_same_pen(i))]
+                        #drobj.dragon.interact(other)
+                        
+        # ui
+        self.project_sprite(self.ui,0,0,0,2)
+        if self.state == 'dragons':
+            self.project_sprite(self.ui_selected,0,262,10,3,blend_mode=sge.BLEND_RGBA_ADD)
+        elif self.state == 'lakeside':
+            self.project_sprite(self.ui_selected,0,262,57,3,blend_mode=sge.BLEND_RGBA_ADD)
+        elif self.state == 'store':
+            self.project_sprite(self.ui_selected,0,262,104,3,blend_mode=sge.BLEND_RGBA_ADD)
+        elif self.state == 'forest':
+            self.project_sprite(self.ui_selected,0,262,151,3,blend_mode=sge.BLEND_RGBA_ADD)
+
+        # info section/lower panel buttons
+        if self.state == 'dragons':
+            if self.selected_dragon:
+                sel = self.selected_dragon.dragon
+                sx = 'MALE' if sel.sex == 'm' else 'FEMALE'
+                self.info_text.update(sel.name+"\n"+sx+"/"+sel.rank)
+            else:
+                self.info_text.update("")
+        
+        # game screen
+        self.scr.draw_lock()
+        self.scr.draw_clear()
+        if self.state == 'dragons':
+            # draw dragon screen background with fence things
+            for obj in self.currentpen: # draw dragons in current pen
+                self.scr.draw_sprite(obj.sprite,obj.image_index,obj.x-4,obj.y-4,obj.z)
+        elif self.state == 'lakeside':
+            self.scr.draw_sprite(gfx.Sprite('outdoors','sprites\\ase'),0,0,0,1)
+        self.scr.draw_unlock()
+        self.project_sprite(self.scr,0,4,4,1)
+
+        # finally, text input box over everything if it exists
+        if self.text_input:
+            ti = self.text_input
+            self.project_sprite(ti.sprite,0,ti.x,ti.y,ti.z)
+
+    def event_mouse_button_press(self,button):
+        if  button == 'left':
+            # manage input
+            clicked = top_obj(DragonObj,sge.game.mouse.x,sge.game.mouse.y)
+            if clicked and (self.selected_dragon != clicked):
+                self.selected_dragon = clicked
+                if clicked.dragon.state == 'mating':
+                    pass # go to the mating scene room and display
+            else:
+                self.selected_dragon = None
+                
+    def event_key_press(self,key,char):
+        if self.text_input:
+            self.text_input.event_key_press(key,char)
+        try:
+            if self.state == 'dragons':
+                pennum = int(char)
+                self.switch_pen(pennum)
+        except ValueError:
+            pass
+        
+    def switch_state(self,state):
+        # Sets current display state and alters necessary parameters.
+        if state in ('dragons','lakeside','store','forest'):
+            if self.state == 'dragons' and state != 'dragons':
+                self.selected_dragon = None
+                self.info_text.update("")
+            self.state = state
+        else: print("unknown state input: %s" % state)
+
+    def switch_pen(self,pennumber):
+        # switch to display input pen
+        dpp = self.dragons_per_pen
+
+        if pennumber > get_pen_count() or pennumber < 1: return
+        
+        for obj in self.currentpen:
+            self.remove(obj)
+        
+        pennumber -= 1
+        start = pennumber*dpp; end = pennumber*dpp+dpp
+        self.currentpen = self.dragonobjects[start:end]
+        self.selected_dragon = None
+        
+        for obj in self.currentpen:
+            self.add(obj)
+
+
+class Button(dsp.Object):
+    """On click this button object will perform the input action with the input parameters.
+       If params == None, then action is called with no arguments. The required method for
+       parsing the input arguments is automatically detected and they are unpacked as
+       necessary when the function is called, i.e. if type(params) == (list or tuple) then
+       action is called in the following manner: action(*params). This works for most types."""
+    def __init__(self,x,y,font=None,text="",width=85,height=34,action=None,params=None):
+        super().__init__(x,y,z=10)
+        if font == None:
+            font = lfont
+        self.sprite = gfx.Sprite(width=width,height=height)
+        self.sprite.draw_text(font,text,width//2+2,height//2,halign='center',valign='middle')
+        self.font = font
+        self.width = width
+        self.height = height
+        self.sprite.origin_x=width//2;self.sprite.origin_y=height//2
+        self.action = action
+        self.params = params
+
+    def update(self,text):
+        self.sprite.draw_clear()
+        self.sprite.draw_rectangle(0,0,self.width,self.height,fill=gfx.Color((255,255,255,200)),outline=gfx.Color('black'))
+        self.sprite.draw_text(self.font,text,self.width//2+2,self.height//2,halign='center',valign='middle',color=gfx.Color('black'))
+
+    def event_mouse_button_press(self,button):
+        if  button == 'left':
+            m = sge.game.mouse
+            if mouse_within(self):
+                if self.action and self.params:
+                    # Unpack as necessary
+                    if type(self.params) in (list,tuple):
+                        self.action(*self.params)
+                    elif type(self.params) == dict:
+                        self.action(**self.params)
+                    else:
+                        self.action(self.params)
+                elif self.action: self.action()
+
+class TextInput(dsp.Object):
+    """A text box that the user can type into. The 'action' input is a function that is called when
+       the user presses Enter to submit; action should be a function that accepts a string as input"""
+    def __init__(self,text="",width=250,maxlen=11,action=None):
+
+        height = font.get_height('ASDF')+4
+        # created at center of screen.
+        super().__init__(x=w//2,y=h//2,z=12,visible=True)
+        
+        self.sprite = gfx.Sprite(width=width,height=height)
+        self.sprite.draw_text(font,text,width//2+2,height//2,halign='center',valign='middle')
+        self.width = width
+        self.height = height
+        resize_sprite(self.sprite,1)
+
+        self.maxlen = maxlen
+        self.action = action
+        self.text = text
+        self.update()
+
+    def update(self):
+        self.sprite.draw_clear()
+        self.sprite.draw_rectangle(0,0,self.width,self.height,fill=gfx.Color((255,255,255,200)),outline=gfx.Color('black'))
+        self.sprite.draw_text(font,self.text,2,self.height//2,halign='left',valign='middle',color=gfx.Color('black'))
+
+    def event_key_press(self, key, char):
+        if char.isalnum() or char == ' ':
+            self.text += char if len(self.text) <= self.maxlen else ""
+            self.update()
+        elif key == 'backspace':
+            self.text = self.text[:-1]
+            self.update()
+        elif key == 'enter':
+            # submit text to action
+            if self.action:
+                self.action(self.text)
+            self.destroy()
+            del self
+            sge.game.current_room.text_input = None
+
+class Dialog(dsp.Object):
+
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
     
 class Draggable(dsp.Object):
 
@@ -149,8 +394,7 @@ class Draggable(dsp.Object):
 
     def event_mouse_button_press(self,button):
         if  button == 'left':
-            if self != top_obj(Draggable,sge.game.mouse.x,sge.game.mouse.y):
-                return
+            if self != top_obj(Draggable,sge.game.mouse.x,sge.game.mouse.y): return
             self.grabbing = True
             self.offx = self.x-sge.game.mouse.x
             self.offy = self.y-sge.game.mouse.y
@@ -160,31 +404,92 @@ class Draggable(dsp.Object):
         if button == 'left':
             self.grabbing = False
 
-class DragonObj(Draggable):
+class DragonObj(dsp.Object):
+    
     """Internally contains a Dragon object, from which it pulls its attributes."""
-    def __init__(self,dragon=None,z=0):
-        self.dragon = dragon
-        if self.dragon == None:
-            self.dragon = Dragon(w//2,h//2)
+    def __init__(self,room,dragon=None,z=0):
+
+        self.dragon = dragon if dragon else Dragon()
         super().__init__(self.dragon.x,self.dragon.y,z=z,
-                         sprite=get_dragon_sprite(self.dragon))
+                         sprite=get_dragon_sprite(self.dragon),visible=False)
+            
+        self.room = room
+        self.facing = -1
+        self.drawing = False
+        self.interacted = False # becomes true when this dragon interacts with another on a per-frame basis.
 
-############### GAME INITIALIZATION ###############
-# Create Game object
-Game(width=w, height=h, fps=FPS, window_text=appname,
-     scale=3, scale_method="noblur")
+    def collision_point(self):
+        """All dragons collide at front, so this method returns the x value at which this dragon will collide with something."""
+        return int(self.image_left) if self.facing == -1 else int(self.image_right)
 
-# Load font
-font = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=13)
-lfont = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=26)
+    def update(self):
 
-# Load backgrounds
-bgspr = gfx.Sprite("bubble","backgrounds",fps=FPS,origin_x=64,origin_y=64)
-bglayers = [gfx.BackgroundLayer(bgspr,0,0,repeat_left=True,repeat_right=True,
-                              repeat_up=True,repeat_down=True)]
-background = sge.gfx.Background([], sge.gfx.Color("white"))
+        # control
+        initstate = self.dragon.state
+        output = self.dragon.update() # can return a new dragon if this dragon lays an egg on this frame
+
+        if output:
+            if isinstance(output, Dragon):
+                if len(dragons) <= 20:
+                    dragons.extend(output)
+                    # update dragonobjects etc
+                else:
+                    pass # autosell the dragon egg
+            if isinstance(output, int):
+                pass
+            if isinstance(output, str):
+                if output == 'atefood':
+                    pass # do stuff with inventory
+
+        # if the dragonobject isn't visible we don't need to draw any of the following or change sprites or what have you
+        if self not in self.room.currentpen:
+            self.drawing = False
+            return
+
+        # To test whether or not this dragon needs to change sprites, test for a change of state or prior drawing
+        # States that do not change the dragon's sprite can be filtered out.
+        requiresupdate = self.dragon.state != initstate or (not self.drawing)
+        if requiresupdate:
+            self.sprite = get_dragon_sprite(self.dragon)
+            if self.facing == 1:
+                self.sprite.mirror()
+        
+        self.x = self.dragon.x; self.y = self.dragon.y # update object position
+
+        # if one frame has passed since the sprite was properly oriented
+        if self.dragon.facing != self.facing:
+            self.sprite.mirror()
+            self.facing = self.dragon.facing
+
+        self.drawing = True
 
 ############### FUNCTION DEFINITIONS ###############
+def load_game(num=1):
+    '''Maybe should be called only at beginning of game?
+      probably yea lol. Also only call it after saving the file haha'''
+
+    savefile = os.path.join(SAVEDIR,'file'+str(num)+'.save')
+    if not os.path.exists(savefile):
+        return False
+    infile = gzip.open(savefile,'rb')
+    global dragons
+    global inventory
+    global money
+    global settings
+    
+    del dragons[:]
+    inventory.clear()
+    money[0] = 0
+    settings.clear()
+        
+    dragons.extend(pickle.load(infile))
+    inventory.update(pickle.load(infile))
+    money[0] = pickle.load(infile)[0]
+    settings.update(pickle.load(infile))
+    infile.close()
+    
+    return True
+
 def save_game(num=1):
     """Writes all information required to restore a profile to the
        savefile location, given by 'appdirs' module. Also, if the file
@@ -195,7 +500,6 @@ def save_game(num=1):
     savefile = os.path.join(SAVEDIR,'file'+str(num)+'.save')
     outfile = gzip.open(savefile,'wb')
     global dragons
-    global rooms
     global inventory
     global money
     global settings
@@ -205,39 +509,31 @@ def save_game(num=1):
     pickle.dump(money,outfile)
     pickle.dump(settings,outfile)
     outfile.close()
-        
-def load_game(num=1):
-    '''Maybe should be called only at beginning of game?
-      probably yea lol. Also only call it after saving the file haha'''
-    savefile = os.path.join(SAVEDIR,'file'+str(num)+'.save')
-    infile = gzip.open(savefile,'rb')
-    global dragons
-    global rooms
-    global inventory
-    global money
-    global settings
-    
-    del dragons[:]
-    del rooms[:]
-    inventory.clear()
-    money[0] = 0
-    settings.clear()
-        
-    dragons.extend(pickle.load(infile))
-    print(dragons)
-    inventory.update(pickle.load(infile))
-    money[0] = pickle.load(infile)[0]
-    settings.update(pickle.load(infile))
-    infile.close()
 
 def current_fps():
     "Returns rate the game is running at in fps."
     return round(1/(sge.game.regulate_speed(None)/1000),2);
 
+def ms_to_frames(ms):
+    """Returns the number of frames corresponding to the input milliseconds."""
+    return int(FPS*(ms/1000))
+
+def seconds_to_frames(seconds):
+    """Returns the number of frames corresponding to the input seconds."""
+    return int(FPS*seconds)
+
+def mouse_within(obj):
+    # Returns 'true' if the input object's bounding rect contains the mouse.
+    m = sge.game.mouse
+    x = obj.x-obj.sprite.origin_x
+    y = obj.y-obj.sprite.origin_y
+    return m.x >= x and m.x <= x+obj.sprite.width and  \
+           m.y >= y and m.y <= y+obj.sprite.height
+
 def top_obj(obj,x,y):
     """"Finds the object of type 'obj' that has the largest z-value
         at point (x,y). Returns None if no objects collide at (x,y).
-        Follows convention that if 'obj' is None, all object types collide."""
+        Follows convention that if 'obj' is None, all types collide."""
     colliding = collision.rectangle(x,y,1,1,obj)
     if len(colliding) == 0: return None
     
@@ -320,6 +616,19 @@ def item_value(item):
     elif item == 'berries': return 40
     elif item == 'fish': return 100
     else: return None
+
+def food_value(item):
+    """Returns the number of dragon meals this item will provide based on its name string."""
+    if item == 'tuber': return 1
+    if item in ('cherries','apple'): return 2
+    if item == 'berries': return 3
+    if item == 'fish': return 10
+
+def item_type(item):
+    """Returns the type of input item."""
+    if item in ('tuber','cherries','apple','berries','fish'):
+        return 'food'
+    # then do other things for other item types.
     
 def calc_bbox(sprite, frame):
     """Returns a 4-tuple containing bounding box x,y,width, and height
@@ -395,13 +704,19 @@ def get_dragon_sprite(dragon):
            types can be used."""
 
         # default void
-        sprite = None
+        sprite = Sprite("base_dragon","sprites",fps=2)
         # base colors
         pricol = Color(dragon.primary_col)
         eyecol = Color(dragon.eye_col)
         # texture sprite
         texsprite = dragon.get_texture()
 
+        # Egg sprite
+        if dragon.age == 'egg':
+            pass # draw the egg sprite
+            return #eggsprite
+        
+        # Adult/juvenile dragon state
         if dragon.state == 'neutral':
             sprite = Sprite("base_dragon","sprites",fps=2)
             recolor(sprite,pricol,texsprite,dragon.toffset)
@@ -423,8 +738,13 @@ def get_dragon_sprite(dragon):
             overlay(eyes,eyecol)
             draw_all_frames(sprite,eyes,4,18)
             
-        elif dragon.state == 'hungry':
-            pass
+        elif dragon.state == 'scratching':
+            sprite = Sprite("dragon_scratching","sprites",fps=2)
+            recolor(sprite,pricol,texsprite,dragon.toffset)
+            eyes = Sprite("dragon_scratching_eyes","sprites")
+            overlay(eyes,eyecol)
+            sprite.draw_sprite(eyes,0,5,11)
+            
         elif dragon.state == 'affection':
             pass
         elif dragon.state == 'mating':
@@ -437,9 +757,27 @@ def get_dragon_sprite(dragon):
         resize_sprite(sprite,1) # centralize
         return sprite
 
+def get_pen_count():
+    return (len(dragons)-1)//5 + 1
+
+def dragons_in_same_pen(i):
+    # based on index value. 0-4,5-9,10-14,15-20.
+    retlist = []
+    
+    if i <= 4:
+        retlist = list(range(0,5))
+    elif i <= 9:
+        retlist = list(range(5,10))
+    elif i <= 14:
+        retlist = list(range(10,15))
+    elif i <= 20:
+        retlist = list(range(15,20))
+        
+    retlist.remove(i)
+    return retlist
+
 def get_mate_anim(dom,sub,closeup=False):
     '''FULLY IMPLEMENTED! Now just add all the animation names to the appropriate lists haha'''
-    
     # autoswap to correctly select the dominant dragon.
     if dom.dominance < sub.dominance:
         dom, sub = sub, dom
@@ -511,4 +849,19 @@ def get_mate_anim(dom,sub,closeup=False):
         matingsprite.rd['baseimages'][i] = frombuffer(img.tobytes(),img.size,'RGBA')
     s2 = time()
     print(str(s2-s1)+' seconds')
+    if choice((True,False)): matingsprite.mirror() # randomly flip the sprite horizontally
     return matingsprite
+
+############### GAME INITIALIZATION ###############
+# Create Game object
+Game(width=w, height=h, fps=FPS, window_text=appname,
+     scale=3, scale_method="noblur")
+
+# Load font
+font = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=13)
+lfont = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=26)
+
+
+# Dragon array
+#names = ("bob","cally","dana","evan",'filbert','gina')
+#sexes = ('m','f','f','m','m','f')

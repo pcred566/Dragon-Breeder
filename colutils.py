@@ -2,6 +2,10 @@ from sge import gfx
 from sge.gfx import Sprite,Color
 from random import randint,choice
 
+FPS = 64
+w = 360 # convenience, width of window
+h = 240 # convenience, height of window
+
 def clamp(num,start,end):
     """Returns 'num' if num >= start and num <= end, else forces into range."""
     if num >= start and num <= end: return num
@@ -30,7 +34,7 @@ def saturated_randcol(value=255):
 
 def pastel_randcol():
     """Returns a random color that is guaranteed to have low saturation
-       and high brightness like a pastel."""
+       and high brightness like a pastel color."""
     # begin with saturated then desaturate
     col = saturated_randcol()
     offset = 175

@@ -15,6 +15,9 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with the Pygame SGE.  If not, see <http://www.gnu.org/licenses/>.
 
+# PCRED566 EDIT: Default cache and prune time decreased heavily due to running out of memory
+# (oh my god SGE is fucking trash never using it again)
+
 """
 This module is a reserved namespace for internal use by the SGE, to
 avoid cluttering up the sge namespace.  Use this for all non-standard
@@ -40,10 +43,10 @@ import sge
 
 
 # How often to call cache.prune in milliseconds.
-CACHE_PRUNE_TIME = 8000
+CACHE_PRUNE_TIME = 400
 
 # How long cached items should remain cached by default in seconds.
-CACHE_DEFAULT_LIFE = 15
+CACHE_DEFAULT_LIFE = 0
 
 # Lists of objects that are tangible and objects that check for
 # collisions; makes collision detection more efficient.
