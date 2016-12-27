@@ -9,7 +9,7 @@ sexes = (MALE,FEMALE)
 sexualities = (BI,MALE,FEMALE)
 greek={'alpha':"α", 'beta': "β", 'gamma':"γ", 'delta':"δ", 'epsilon':"ε"}
 ages = ('egg','juvenile','adult')
-states = ('neutral','walking','sleeping','eating','scratching','sadness','affection','mating')
+states = ('neutral','walking','sleeping','eating','scratching','affection','mating')
 textures = ('stripes','speckles')
 class Dragon():
     """Class that contains an implementation of a dragon."""
@@ -73,7 +73,7 @@ class Dragon():
 
     def __init__(self,x=None,y=None,name=None,sex=None,rank=None,dominance=None,attractedto=None,happiness=None,
                  parents=None,primary_col=None,eye_col=None,state='neutral',pregnant=False,age=None,fertility=None,
-                 facing=None,canmate=False,texture=None,toffset=None,flip=None,mirror=None,mate=None,mate_attraction=None):
+                 facing=None,canmate=True,texture=None,toffset=None,flip=None,mirror=None,mate=None,mate_attraction=None):
         """If this method is called with as few parameters as is permissible, the system will
            generate a fully wild dragon. 'rank' should be one of (alpha,beta,gamma). All colors
            in this class including primary, secondary and eye must are tuples and must be passed
@@ -207,19 +207,21 @@ class Dragon():
         self.mate_attraction = mate_attraction
         
         # First eating begins in 2-5 minutes, sleep begins in 10-20. Begins in neutral state.
+        # The reset_timers() function sets the dragon's timers using exactly these parameters.
         self.timers = {'neutral':0,'walking':-1,'sleeping':randint(FPS*60*10,FPS*60*20),
-                       'hungry':randint(FPS*60*2,FPS*60*5),'hatch':-1,'mature':-1,
-                       'canmate':0,'endaffection':-1,'endmating':-1,'givebirth':-1}
+                       'hungry':randint(FPS*60*2,FPS*60*4),'hatch':-1,'mature':-1,
+                       'canmate':0,'beginaffection':-1,'endaffection':-1,'endmating':-1,'givebirth':-1}
 
         if self.age == 'juvenile':
             maturetime = randint(FPS*60*1,FPS*60*3) # mature in 1-3 minutes.
             self.timers['mature'] = maturetime
 
         if self.age == 'egg':
-            hatchtime = randint(FPS*60*2,FPS*60*3) # hatch in 2-3 minutes.
+            self.timers.update({'neutral':0,'hungry':randint(FPS*3,FPS*4)}) # hunger timer set to after hatch timer
+            hatchtime = randint(FPS*60*1,FPS*60*3) # hatch in 1-3 minutes.
             self.timers['hatch'] = hatchtime
 
-        self.temptimers={}
+        self.timer_lock = None # if set to the name of a timer, prevents other timers from counting down
                         
 
     def can_mate_with(self,other):
@@ -296,7 +298,6 @@ class Dragon():
             other.mate = self.as_dict()
             self.mate_attraction = self.compatibility(other)
             other.mate_attraction = other.compatibility(self)
-            print(self.mate)
             return True
         else:
             return False
@@ -315,23 +316,13 @@ class Dragon():
 
         return texsprite
 
-    def kill_timers(self):
-        """Set all timers to -1."""
-        self.temptimers.update({k:v for k,v in self.timers.items()})
-        for key in self.timers.keys():
-            self.timers[key] = -1
-        return
-
-    def revive_timers(self):
+    def reset_timers(self):
         """Set timers back to default values. Starts by attempting to load the previous values of the timers
            if they are available, else defaults to resetting the timers using the method found in __init__."""
-        if self.temptimers:
-            self.timers.update({k:v for k,v in self.temptimers.items()})
-        else:
-            self.timers.update({'neutral':0,'walking':-1,'sleeping':randint(FPS*60*10,FPS*60*20),
-                       'hungry':randint(FPS*60*2,FPS*60*5),'hatch':-1,'mature':-1,
-                       'canmate':-1,'endaffection':-1,'endmating':-1})
-            print('something fucked up in timers')
+        
+        self.timers.update({'neutral':0,'walking':-1,'sleeping':randint(FPS*60*10,FPS*60*20),
+                   'hungry':randint(FPS*60*2,FPS*60*5),'hatch':-1,'mature':-1,
+                   'canmate':-1,'endaffection':-1,'endmating':-1})
         
 
     def update(self,inventory,mate):
@@ -339,91 +330,115 @@ class Dragon():
            Returns multiple different object types depending on the dragon's actions. Also, it modifies inventory
            as necessary in order to feed the given dragon."""
         
-        speed = random()*3+0.2 # pixels per frame
+        speed = random()*0.8+0.2 # pixels per frame
         retval = None # to return
         
         for key,val in self.timers.items():
-            
             self.timers[key] -= 1 if val >= 0 else 0 # count down every frame
-            # Timer is left at -1 until it is needed again, so that it is only activated once when it reaches zero.
             if val == 0:
-                # Block of events that occur when a timer reaches zero, only happens once each time a value reaches zero.
-                
-                if self.age == 'adult' or self.age == 'juvenile':
-                    if key == 'neutral': # all states can transition to neutral
-                        self.timers['walking'] = randint(FPS*1,FPS*3) # between 1 and 3 seconds
-                        if choice((True,False)): self.facing = -self.facing
-                        self.state = 'neutral'
-                        
-                    elif key == 'walking' and self.state == 'neutral': # only neutral state transition to walking
-                        self.timers['neutral'] = randint(10,FPS*3) # between 10 frames and 3 seconds
-                        if choice((True,False)): self.facing = -self.facing
+                """Possible state transitions are the following:
+                   neutral->walking
+                   neutral->sleeping, walking->sleeping, eating->sleeping, scratching->sleeping
+                   neutral->eating/scratching, walking->eating/scratching
+                   neutral->affection, walking->affection
+                   affection->mating
+                   mating->neutral
+                """
+                if key == 'neutral': # state=neutralize, then walk
+                    if self.state == 'mating' or self.state == 'affection':
+                        # the dragons are close to each other, so we move them a space apart to prevent multiple interactions.
+                        self.x += self.facing
+                    self.timers['walking'] = randint(FPS*1,FPS*3)
+                    self.state = 'neutral'
+                    
+                    
+                elif key == 'walking': # state=walk, then neutralize
+                    if self.state == 'neutral':
                         self.state = 'walking'
+                        self.timers['neutral'] = randint(FPS*1,FPS*3)
+                        if choice((True,False)): self.facing = -self.facing # random flip around
+                    else:
+                        self.timers['walking'] = randint(FPS*2,FPS*4) # check again in 2-4 seconds
                         
-                    elif key == 'hungry':
-                        if self.state in ('eating','scratching','mating','affection'):
-                            self.timers['hungry'] = FPS*2 # if not in transferrable state check again in 2 s
-                        self.timers['hungry'] = randint(FPS*60*2,FPS*60*4) # reset hunger timer
-                        self.timers['neutral'] = FPS*4 # eat for 2 seconds then revert to neutral state
-                        if inventory['food'] > 0:
-                            self.happiness = clamp(self.happiness+1,1,8)
-                            inventory['food'] -= 1 # this affects the actual inventory object lol
-                            self.state = 'eating'
-                        else: # no food in inventory
-                            self.happiness = clamp(self.happiness-1,1,8)
-                            self.state = 'scratching'
-                            
-                    elif key == 'sleeping':
-                        if self.state in ('eating','scratching','mating','affection'):
-                            self.timers['sleeping'] = FPS*2 # check again in 2s
-                        else:
-                            self.state = 'sleeping'
-                            self.timers['neutral'] = randint(FPS*30,FPS*120) # wake up between 30 seconds and 2 minutes from now
-                            self.timers['sleeping'] = randint(FPS*60*10,FPS*60*20) # go to sleep 10-20 minutes from now
-                            retval = None
-                            
-                    elif key == 'canmate':
-                        self.canmate = True
+                elif key == 'sleeping': # state=sleep, then neutralize
+                    if self.state in ('neutral','walking','eating','scratching') and not self.pregnant:
+                        self.state = 'sleeping'
+                        self.timers['neutral'] = randint(FPS*45,FPS*60)
+                    else: # could not go from previous state to sleep state
+                        self.timers['sleeping'] = randint(FPS*2,FPS*4) # check in 2-4s
                         
-                    elif key == 'endaffection':
-                        # see if the dragons can mate
-                        assert mate, self.mate
-                        if self.canmate and mate.canmate:
-                            chance = self.fertility + mate.fertility # 16 is max fertility
-                            if chance >= choice(range(16)): # success
-                                if self.timers['endmating'] < 0:
-                                    self.timers['endmating'] = mate.timers['endmating'] = randint(FPS*20,FPS*35)
-                                self.state = 'mating'
-                                self.happiness = clamp(self.happiness+1,1,8)
-                        if self.state != 'mating': # if not mating revert to old state.
-                            self.revive_timers()
-                            self.timers['neutral'] = 10
-                            
-                    elif key == 'endmating':
-                        if self.sex == FEMALE and mate.sex == MALE:
-                            chance = self.fertility * 2 # 16 is once again max
-                            if chance >= choice(range(2,15)):
-                                self.pregnant = True
-                                self.timers['givebirth'] = randint(FPS*90,FPS*60*2) # give birth in 1.5-2 minutes
-                        self.canmate = False
-                        self.revive_timers()
-                        self.timers['canmate'] = randint(FPS*10,FPS*20) # a 10-20 second rest period lmfao
-                        self.timers['neutral'] = 10
+                elif key == 'hungry':
+                    if (self.state == 'neutral' or self.state == 'walking'):
+                        # TODO!!!!!
+                        # check inventory, update happiness etc.
+                        self.timers['hungry'] = randint(FPS*60*2,FPS*60*4) # RESET
+                        pass
+                    else:
+                        self.timers['hungry'] = randint(FPS*2,FPS*4) # check in 2-4s
+                        
+                elif key == 'hatch':
+                    self.age = 'juvenile'
+                    self.reset_timers()
+                    
+                elif key == 'mature':
+                    self.age = 'adult'
+                    self.canmate = True
+                    
+                elif key == 'canmate':
+                    self.canmate = True
+                    
+                elif key == 'beginaffection':
+                    # only called through the interact() method, and only on mate and self simultaneously.
+                    self.state = 'affection'
+                    self.timers['neutral'] = -1
+                    self.timers['endaffection'] = FPS*3 # end affection in 3 seconds
+                
+                elif key == 'endaffection':
+                    conditionsmet = True
+                    chance = self.fertility + mate.fertility # max 16
+                    matingduration = randint(FPS*30,FPS*45) # 30-45 seconds
+                    # note that the above line should always find the pregnant female and should prevent mating in both mate and self.
+                    
+                    if 0 < self.timers['givebirth'] < matingduration or 0 < mate.timers['givebirth'] < matingduration:
+                        # the female would give birth during mating in this case.
+                        conditionsmet = False
+                    if (not self.canmate) or (not mate.canmate): # the dragons mated too recently.
+                        conditionsmet = False
+                    if chance < randint(2,18): # fertility/randomness prevented the dragons from mating.
+                        conditionsmet = False
+                    if mate.timers['neutral'] == 0:# mate failed for some reason or another.
+                        conditionsmet = False
 
-                    elif key == 'givebirth':
-                        print('a dragon gave birth.')
-                        retval = offspring(self,mate) if mate else None
-                        
-                if self.age == 'juvenile':
-                    if key == 'mature':
-                        self.age = 'adult'
-                        
-                if self.age == 'egg':
-                    if key == 'hatch':
-                        self.age = 'juvenile'
-                        self.revive_timers()
-                        self.timers['mature'] = randint(FPS*60*1,FPS*60*3) # mature in 1-3 minutes
-        
+                    if conditionsmet or mate.state == 'mating': # the dragons can mate. mate check is to prevent double chance filtration.
+                        self.state = 'mating'
+                        # no matter what, self and mate should always end mating simutaneously.
+                        if mate.timers['endmating'] > 0:
+                            self.timers['endmating'] = mate.timers['endmating']
+                        else:
+                            self.timers['endmating'] = matingduration
+                            
+                    else: # conditions not met, revert to a normal state
+                        self.timers['neutral'] = 0
+                        mate.timers['neutral'] = 0
+                            
+                elif key == 'endmating':
+                    if self.sex == FEMALE and mate.sex == MALE: # chance to get pregnant~
+                        chance = self.fertility*2
+                        if chance >= randint(2,16): # impregnated!
+                            self.pregnant = True
+                            self.timers['givebirth'] = randint(FPS*60,FPS*90) # 1-1.5 minutes
+                    self.canmate = False
+                    self.timers['canmate'] = randint(FPS*30,FPS*40) # 30-40 second rest period
+                    self.timers['neutral'] = 0
+                
+                elif key == 'givebirth':
+                    retval = offspring(self,mate)
+                    print("A dragon gave birth on this frame.")
+                    self.pregnant = False
+
+        if self.age == 'egg':
+            self.state = 'neutral'
+            
         if self.state == 'neutral' or self.state == 'sleeping':
             # do nothing
             pass
@@ -437,13 +452,20 @@ class Dragon():
                 self.x = 240
             if self.x < 20:
                 self.x = 20
-                
+
+        if self.age == 'adult' and self.mate == None:
+            self.canmate = True
+
         return retval
 
     def interact(self,other):
         # The two dragons will interact.
-        if self.state in ('affection','mating','sleeping','eating','scratching'):
+        if self.state in ('affection','mating','sleeping','eating','scratching') or self.age == 'egg':
             # no interaction possible during these states, as the dragon is either unable to or is already interacting.
+            return False
+
+        if other.state in ('affection','mating','sleeping','eating','scratching') or other.age == 'egg':
+            # same as above
             return False
         
         if not self.mate:
@@ -456,12 +478,9 @@ class Dragon():
                 return False # nothing happened
 
         elif self.mate:
-            if other.as_dict() == self.mate: # interact with mate
-                if choice((True,True,True,True,False)): # 80% chance to interact
-                    self.state = 'affection'; other.state = 'affection' # the loving mood ensues
-                    # since we don't want anything happening while these dragons are doin it haha
-                    self.kill_timers(); other.kill_timers()
-                    self.timers['endaffection'] = other.timers['endaffection'] = FPS*3 # end in 3 seconds then chance to mate
+            if other.as_dict() == self.mate: # interact with mate                
+                if choice((True,True,True,True,False)): # 80% chance for affection
+                    self.timers['beginaffection'] = other.timers['beginaffection'] = 0 # the loving mood ensues
         return False
 
 def offspring(parent1,parent2):
@@ -546,7 +565,7 @@ def offspring(parent1,parent2):
                'fname':md.name,'mname':fd.name}
     
     primary_col = None # default if mother and father have no known parents, random engine will decide
-    texture = choice(md.texture,fd.texture) # default choose between texture of parents if grandparents not known
+    texture = choice((md.texture,fd.texture)) # default choose between texture of parents if grandparents not known
     if md.parents or fd.parents:
         if md.parents and fd.parents:
             # Choose out of grandparent colors if possible

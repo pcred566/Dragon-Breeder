@@ -5,6 +5,7 @@ import pickle
 
 from dragon import *
 from colutils import *
+from math import floor
 from PIL import Image
 from sge import gfx,dsp,collision
 from random import randrange,randint,choice
@@ -136,25 +137,16 @@ class MainRoom(dsp.Room):
         
         self.selected_dragon = None
         self.hold_dragon = None
+        self.swapval = -1
         self.dragons_per_pen = 5
         
         self.info_text = Button(44,219,font,width=80) # Holds basic game info like stuff about selected dragon etc
         self.text_input = None # An object that can be created as a text input which appears on screen
         
-        self.dragonobjects = [DragonObj(dragon=dragons[i],z=i,room=self) for i in range(len(dragons))]
-        
+        self.dragonobjects = []
+        for i in range(len(dragons)):
+            self.dragonobjects.append(DragonObj(dragon=dragons[i],z=i,room=self))
         self.currentpen = self.dragonobjects[0:self.dragons_per_pen] # default first five dragons
-
-        for d1 in self.dragonobjects:
-            # find the object corresponding to the dragon's mate and set it as the object mate
-            d1.mate = None # This is the object mate.
-            if d1.dragon.mate:
-                mt = d1.dragon.mate
-                for d2 in self.dragonobjects:
-                    if d2.dragon.as_dict() == mt:
-                        d1.mate = d2
-                        d2.mate = d1
-                        break # we're done once found
 
         self.buttons = [Button(310,30,text="Dragons",action=self.switch_state,params='dragons'),
                    Button(310,80,text="Lakeside",action=self.switch_state,params='lakeside'),
@@ -172,9 +164,11 @@ class MainRoom(dsp.Room):
             drobj.update()
             
         # update interactions between dragons
-        for drobj in self.currentpen:
-            for other in self.currentpen:
-                if not drobj.interacted and drobj.facing != other.facing and \
+        for i in range(len(self.dragonobjects)):
+            drobj = self.dragonobjects[i]
+            for j in dragons_in_same_pen(i): # guaranteed to capture all dragons in the same pen
+                other = self.dragonobjects[j]
+                if not drobj.interacted and drobj.dragon.facing != other.dragon.facing and \
                        drobj.collision_point() == other.collision_point():
                     drobj.interacted = other
                     other.interacted = drobj
@@ -189,27 +183,7 @@ class MainRoom(dsp.Room):
                     
             if not drobj.dragon.mate: # if the dragon decided to break up with its current mate, set the object mate
                 drobj.mate = None
-
-        for i in range(len(self.dragonobjects)):
-            drobj = self.dragonobjects[i]
-            if drobj not in self.currentpen:
-                if randint(1,FPS*40) == 1: # interaction for each dragon happens on average once every 40 seconds
-                    if drobj.mate:
-                        # interact with mate
-                        drobj.interact(drobj.mate)
-                    else:
-                        # interact with random dragon from same pen
-                        other = self.dragonobjects[choice(dragons_in_same_pen(i))]
-                        ismate = drobj.interact(other)
-                        if ismate:
-                            drobj.mate = other
-                            other.mate = drobj
-                            x = randint(w//2-60,w//2+60) # place the dragons at a random place near the center of the room
-                            drobj.dragon.facing = 1
-                            other.dragon.facing = -1
-                            drobj.dragon.x = x+drobj.sprite.origin_x
-                            drobj.dragon.x = x-drobj.sprite.origin_x
-
+                
         # ui
         self.project_sprite(self.ui,0,0,0,2)
         if self.state == 'dragons':
@@ -258,6 +232,19 @@ class MainRoom(dsp.Room):
                     pass # go to the mating scene room and display
             else:
                 self.selected_dragon = None
+        if button == 'right':
+            # swap dragons
+            clicked = top_obj(DragonObj,sge.game.mouse.x,sge.game.mouse.y)
+            if clicked:
+                if self.swapval >= 0:
+                    if self.swap_dragons(self.swapval,self.dragonobjects.index(clicked)):
+                        self.swapval = -1
+                    else:
+                        pass
+                        # error message
+                self.swapval = self.dragonobjects.index(clicked)
+            else:
+                self.swapval = -1
                 
     def event_key_press(self,key,char):
         if self.text_input:
@@ -294,6 +281,22 @@ class MainRoom(dsp.Room):
         
         for drobj in self.currentpen:
             self.add(drobj)
+
+    def swap_dragons(self,i1,i2):
+        """Swaps the dragons at index i1 and i2 if they are in an acceptable state to do so and returns True else returns False."""
+        if i1 >= len(self.dragonobjects) or i1 < 0 or i2 >= len(self.dragonobjects) or i2 < 0:
+            # invalid index
+            return False
+        d1 = self.dragonobjects[i1]
+        d2 = self.dragonobjects[i2]
+        self.swapval = -1
+        if d1.dragon.state in ('walking','neutral','eating','scratching','sleeping'):
+            if d2.dragon.state in ('walking','neutral','eating','scratching','sleeping'):
+                # swap and move to correct location
+                self.dragonobjects[i1].dragon.x,self.dragonobjects[i2].dragon.x = self.dragonobjects[i2].dragon.x,self.dragonobjects[i1].dragon.x
+                self.dragonobjects[i1],self.dragonobjects[i2] = self.dragonobjects[i2],self.dragonobjects[i1]
+                return True
+        return False
 
 class Button(dsp.Object):
     """On click this button object will perform the input action with the input parameters.
@@ -425,12 +428,22 @@ class DragonObj(dsp.Object):
             
         self.room = room
         self.facing = -1
-        self.drawing = False
+        self.drawing = True
         self.interacted = False # becomes true when this dragon interacts with another on a per-frame basis.
+
+        self.mate = None # This is the object mate.
+        # find the object corresponding to the dragon's mate and set it as the object mate
+        if self.dragon.mate:
+            mt = self.dragon.mate
+            for d2 in self.room.dragonobjects:
+                if d2.dragon.as_dict() == mt:
+                    self.mate = d2
+                    d2.mate = self
+                    break # we're done once found
 
     def collision_point(self):
         """All dragons collide at front, so this method returns the x value at which this dragon will collide with something."""
-        return int(self.image_left) if self.facing == -1 else int(self.image_right)
+        return floor(self.dragon.x)-self.sprite.width//2 if self.dragon.facing == -1 else floor(self.dragon.x)+self.sprite.width//2
 
     def interact(self,other):
         return self.dragon.interact(other.dragon)
@@ -443,8 +456,9 @@ class DragonObj(dsp.Object):
 
         if output:
             if isinstance(output, Dragon):
-                if len(dragons) <= 20:
+                if len(dragons) < 20:
                     dragons.append(output)
+                    self.room.dragonobjects.append(DragonObj(self.room,dragon=dragons[-1]))
                     # update dragonobjects etc
                 else:
                     pass # autosell the dragon egg
@@ -461,6 +475,8 @@ class DragonObj(dsp.Object):
         requiresupdate = self.dragon.state != initstate or (not self.drawing)
         if requiresupdate:
             self.sprite = get_dragon_sprite(self.dragon)
+            self.z = 10 if self.dragon.state == 'mating' else 0
+            self.image_fps = self.sprite.fps
             if self.facing == 1:
                 self.sprite.mirror()
         
@@ -718,49 +734,45 @@ def get_dragon_sprite(dragon):
 
         # Egg sprite
         if dragon.age == 'egg':
-            pass # draw the egg sprite
-            return #eggsprite
-        
-        # Adult/juvenile dragon state
-        if dragon.state == 'neutral':
-            sprite = Sprite("base_dragon","sprites",fps=2)
-            recolor(sprite,pricol,texsprite,dragon.toffset)
-            eyes = Sprite("base_eyes","sprites")
-            overlay(eyes,eyecol)
-            draw_all_frames(sprite,eyes,6,9)
-            
-        elif dragon.state == 'walking':
-            pass
-        
-        elif dragon.state == 'sleeping':
-            sprite = Sprite("dragon_sleeping","sprites",fps=1)
-            recolor(sprite,pricol,texsprite,dragon.toffset+1)
-            
-        elif dragon.state == 'eating':
-            sprite = Sprite("dragon_eating","sprites",fps=2)
-            recolor(sprite,pricol,texsprite,dragon.toffset)
-            eyes = Sprite("base_eyes","sprites")
-            overlay(eyes,eyecol)
-            draw_all_frames(sprite,eyes,4,18)
-            
-        elif dragon.state == 'scratching':
-            sprite = Sprite("dragon_scratching","sprites",fps=2)
-            recolor(sprite,pricol,texsprite,dragon.toffset)
-            eyes = Sprite("dragon_scratching_eyes","sprites")
-            overlay(eyes,eyecol)
-            sprite.draw_sprite(eyes,0,5,11)
-            
-        elif dragon.state == 'affection':
-            sprite = gfx.Sprite.from_text(font,'LOVE',color=gfx.Color('black'))
-            
-        elif dragon.state == 'mating':
-            sprite = gfx.Sprite.from_text(font,'FUCKING <3',color=gfx.Color('black'))
+            sprite = gfx.Sprite(fps=2) # draw the egg sprite
 
-        if dragon.pregnant:
-            # no sprite change?
-            pass
+        else:
+            # Adult/juvenile dragon state
+            if dragon.state == 'neutral':
+                sprite = Sprite("base_dragon","sprites",fps=2)
+                recolor(sprite,pricol,texsprite,dragon.toffset)
+                eyes = Sprite("base_eyes","sprites")
+                overlay(eyes,eyecol)
+                draw_all_frames(sprite,eyes,6,9)
+                
+            elif dragon.state == 'walking':
+                pass
+            
+            elif dragon.state == 'sleeping':
+                sprite = Sprite("dragon_sleeping","sprites",fps=1)
+                recolor(sprite,pricol,texsprite,dragon.toffset+1)
+                
+            elif dragon.state == 'eating':
+                sprite = Sprite("dragon_eating","sprites",fps=2)
+                recolor(sprite,pricol,texsprite,dragon.toffset)
+                eyes = Sprite("base_eyes","sprites")
+                overlay(eyes,eyecol)
+                draw_all_frames(sprite,eyes,4,18)
+                
+            elif dragon.state == 'scratching':
+                sprite = Sprite("dragon_scratching","sprites",fps=2)
+                recolor(sprite,pricol,texsprite,dragon.toffset)
+                eyes = Sprite("dragon_scratching_eyes","sprites")
+                overlay(eyes,eyecol)
+                sprite.draw_sprite(eyes,0,5,11)
+                
+            elif dragon.state == 'affection':
+                sprite = gfx.Sprite.from_text(font,'LOVE',color=gfx.Color('black'))
+                
+            elif dragon.state == 'mating':
+                sprite = gfx.Sprite.from_text(font,'FUCKING <3',color=gfx.Color('black'))
 
-        if sprite != None: resize_sprite(sprite,1) # centralize
+        resize_sprite(sprite,1) # centralize
         return sprite
 
 def get_pen_count():
@@ -771,13 +783,13 @@ def dragons_in_same_pen(i):
     retlist = []
     
     if i <= 4:
-        retlist = list(range(0,5))
+        retlist = list(range(0,min(5,len(dragons))))
     elif i <= 9:
-        retlist = list(range(5,10))
+        retlist = list(range(5,min(10,len(dragons))))
     elif i <= 14:
-        retlist = list(range(10,15))
+        retlist = list(range(10,min(15,len(dragons))))
     elif i <= 20:
-        retlist = list(range(15,20))
+        retlist = list(range(15,min(20,len(dragons))))
         
     retlist.remove(i)
     return retlist
@@ -868,7 +880,7 @@ font = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=13)
 lfont = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=26)
 
 names=("Sal","Bell","Colic","Decid","Yalo","Quantip","Python","Valence","Electrum","Silver","Gold","Platinum")
-dragons = [Dragon(name=choice(names),rank='alpha',fertility=8,attractedto='b') for _ in range(10)]
-# Dragon array
-#names = ("bob","cally","dana","evan",'filbert','gina')
-#sexes = ('m','f','f','m','m','f')
+mdr = [Dragon(sex='m',rank='alpha',name=choice(names),fertility=8,dominance=8,attractedto='f') for _ in range(5)]
+fdr = [Dragon(sex='f',rank='alpha',name=choice(names),fertility=8,dominance=1,attractedto='m') for _ in range(5)]
+dragons = [mdr[i//2] if i%2 else fdr[i//2] for i in range(len(mdr)+len(fdr))]
+#dragons = [Dragon(name=choice(names),rank='alpha',fertility=8,attractedto='b') for _ in range(10)]
