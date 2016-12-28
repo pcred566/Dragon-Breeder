@@ -28,19 +28,21 @@ class Game(dsp.Game):
 
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        status = load_game()
-        if not status:
-            pass # new game.
         w = sge.game.width
         h = sge.game.height
     
     def event_step(self,rt,dt):
         # following line draws region main gameplay occurs in
         # self.project_rectangle(4,4,256,192,fill=gfx.Color('black'))
-        pass
+        
+        # draw a greyish square over everything when the game is paused
+        if PAUSE:
+            self.project_rectangle(0,0,w,h,fill=gfx.Color((0,0,0,90)))
 
     def event_key_press(self, key, char):
-
+        
+        global PAUSE
+        
         if key == 'f11':
             scale = self.scale
             if scale == 2: # CYCLE BEGIN HERE
@@ -53,7 +55,9 @@ class Game(dsp.Game):
             if isinstance(sge.game.current_room, MainRoom):
                 LoadRoom(MenuRoom())
             if isinstance(sge.game.current_room, MenuRoom):
-                self.event_close()       
+                self.event_close()
+        elif key == 'p':
+            PAUSE = not PAUSE # invert pause state lol
 
     def event_close(self):
         save_game()
@@ -77,6 +81,10 @@ class MenuRoom(dsp.Room):
 
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        
+        global PAUSE
+        PAUSE = False
+        
         for obj in self.objects[:]:
             self.remove(obj)
 
@@ -105,8 +113,10 @@ class MenuRoom(dsp.Room):
             colliding = collision.rectangle(sge.game.mouse.x,sge.game.mouse.y,1,1)
             if not colliding: return
             if colliding[0] == self.objects[0]: # Start game
-                LoadRoom(MainRoom(background=gfx.Background([],color=gfx.Color
-                    ('white'))))
+                status = load_game()
+                if not status:
+                    pass # new game.
+                LoadRoom(MainRoom(background=gfx.Background([],color=gfx.Color('white'))))
             elif colliding[0] == self.objects[1]: # Options
                 pass#self.screen = 'OPTIONS'
             elif colliding[0] == self.objects[2]: # Tutorial
@@ -119,24 +129,27 @@ class MenuRoom(dsp.Room):
             
     def event_step(self,tp,dt):
         self.project_sprite(self.logo,0,w//2,80,1)
-        self.bglayers[0].x += 1
-        self.bglayers[0].y += 1
+        if not PAUSE:
+            self.bglayers[0].x += 1
+            self.bglayers[0].y += 1
 
 class MainRoom(dsp.Room):
     
     def __init__(self,*args,**kwargs):
-        
         super().__init__(*args,**kwargs)
+        
+        global PAUSE
+        PAUSE = False
 
         for obj in self.objects[:]:
             self.remove(obj)
+            
         self.ui = gfx.Sprite('ui','sprites')
         self.ui_selected = gfx.Sprite('ui_selected','sprites')
         self.scr = gfx.Sprite(width=720,height=480)
         self.state = 'dragons'
         
         self.selected_dragon = None
-        self.hold_dragon = None
         self.swapval = -1
         self.dragons_per_pen = 5
         
@@ -160,29 +173,32 @@ class MainRoom(dsp.Room):
         
     def event_step(self,tp,dt):
 
-        for drobj in self.dragonobjects:
-            drobj.update()
+        if not PAUSE: # only update stuff while the game is running.
             
-        # update interactions between dragons
-        for i in range(len(self.dragonobjects)):
-            drobj = self.dragonobjects[i]
-            for j in dragons_in_same_pen(i): # guaranteed to capture all dragons in the same pen
-                other = self.dragonobjects[j]
-                if not drobj.interacted and drobj.dragon.facing != other.dragon.facing and \
-                       drobj.collision_point() == other.collision_point():
-                    drobj.interacted = other
-                    other.interacted = drobj
-                    ismate = drobj.interact(other)
-                    if ismate:
-                        drobj.mate = other
-                        other.mate = drobj
-                elif drobj.interacted and drobj.collision_point() == drobj.interacted.collision_point():
-                    pass # changes nothing
-                else:
-                    drobj.interacted = False
-                    
-            if not drobj.dragon.mate: # if the dragon decided to break up with its current mate, set the object mate
-                drobj.mate = None
+            for drobj in self.dragonobjects:
+                drobj.update()
+                # if drobj.dragon.happiness == 1: flee.
+                
+            # update interactions between dragons
+            for i in range(len(self.dragonobjects)):
+                drobj = self.dragonobjects[i]
+                for j in dragons_in_same_pen(i): # guaranteed to capture all dragons in the same pen
+                    other = self.dragonobjects[j]
+                    if not drobj.interacted and drobj.dragon.facing != other.dragon.facing and \
+                           drobj.collision_point() == other.collision_point():
+                        drobj.interacted = other
+                        other.interacted = drobj
+                        ismate = drobj.interact(other)
+                        if ismate:
+                            drobj.mate = other
+                            other.mate = drobj
+                    elif drobj.interacted and drobj.collision_point() == drobj.interacted.collision_point():
+                        pass # changes nothing
+                    else:
+                        drobj.interacted = False
+                        
+                if not drobj.dragon.mate: # if the dragon decided to break up with its current mate, set the object mate
+                    drobj.mate = None
                 
         # ui
         self.project_sprite(self.ui,0,0,0,2)
@@ -216,12 +232,16 @@ class MainRoom(dsp.Room):
         self.scr.draw_unlock()
         self.project_sprite(self.scr,0,4,4,1)
 
+
         # finally, text input box over everything if it exists
         if self.text_input:
             ti = self.text_input
             self.project_sprite(ti.sprite,0,ti.x,ti.y,ti.z)
 
     def event_mouse_button_press(self,button):
+        if PAUSE:
+            # only allow clicking with button
+            return
         if  button == 'left':
             # manage input
             clicked = top_obj(DragonObj,sge.game.mouse.x,sge.game.mouse.y)
@@ -239,16 +259,16 @@ class MainRoom(dsp.Room):
                 if self.swapval >= 0:
                     if self.swap_dragons(self.swapval,self.dragonobjects.index(clicked)):
                         self.swapval = -1
-                    else:
-                        pass
-                        # error message
-                self.swapval = self.dragonobjects.index(clicked)
+                else:
+                    self.swapval = self.dragonobjects.index(clicked)
             else:
                 self.swapval = -1
                 
     def event_key_press(self,key,char):
         if self.text_input:
             self.text_input.event_key_press(key,char)
+        if PAUSE:
+            return
         try:
             if self.state == 'dragons':
                 pennum = int(char)
@@ -258,6 +278,8 @@ class MainRoom(dsp.Room):
         
     def switch_state(self,state):
         # Sets current display state and alters necessary parameters.
+        if PAUSE:
+            return
         if state in ('dragons','lakeside','store','forest'):
             if self.state == 'dragons' and state != 'dragons':
                 self.selected_dragon = None
@@ -266,6 +288,8 @@ class MainRoom(dsp.Room):
         else: print("unknown state input: %s" % state)
 
     def switch_pen(self,pennumber):
+        if PAUSE:
+            return
         # switch to display input pen
         dpp = self.dragons_per_pen
 
@@ -472,7 +496,7 @@ class DragonObj(dsp.Object):
 
         # To test whether or not this dragon needs to change sprites, test for a change of state or prior drawing
         # States that do not change the dragon's sprite can be filtered out.
-        requiresupdate = self.dragon.state != initstate or (not self.drawing)
+        requiresupdate = (self.dragon.state != initstate) or (not self.drawing) or (PAUSE and self in self.room.currentpen)
         if requiresupdate:
             self.sprite = get_dragon_sprite(self.dragon)
             self.z = 10 if self.dragon.state == 'mating' else 0
@@ -637,6 +661,29 @@ def item_value(item):
     elif item == 'berries': return 40
     elif item == 'fish': return 100
     else: return None
+
+def dragon_value(drobj,mcheck=True):
+    """Returns the monetary value of the input drobj's dragon based on its personal stats.
+       Don't use the mcheck parameter, it's used by the function to prevent infinte recursion when
+       evaluating the value of the input dragon's mate."""
+    dragon = drobj.dragon
+    value = int()
+
+    if dragon.age == 'egg':
+        return 0 # return discrete value, all eggs have identical worth
+
+    if dragon.age == 'juvenile':
+        return 0 # same as above, replace exact numbers later
+    
+    else: # age == adult
+        value += dragon.fertility # max 8
+        value += dragon.dominance-1 if dragon.sex == 'm' else 8-dragon.dominance # max 7
+        value += 10 if dragon.rank == greek['alpha'] else 5 if dragon.rank == greek['beta'] else 1 if dragon.rank == greek['gamma'] else 0
+        value += dragon.happiness
+        if drobj.mate and mcheck: # only checks mate the first time.
+            value += dragon_value(drobj.mate,False)
+        return value*100 # the maximum value for an adult dragon with no mate is 100*(8+7+10+8)=3300
+    
 
 def food_value(item):
     """Returns the number of dragon meals this item will provide based on its name string."""
@@ -880,7 +927,7 @@ font = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=13)
 lfont = gfx.Font(os.path.join('pixel fonts',"Quadratic.ttf"), size=26)
 
 names=("Sal","Bell","Colic","Decid","Yalo","Quantip","Python","Valence","Electrum","Silver","Gold","Platinum")
-mdr = [Dragon(sex='m',rank='alpha',name=choice(names),fertility=8,dominance=8,attractedto='f') for _ in range(5)]
-fdr = [Dragon(sex='f',rank='alpha',name=choice(names),fertility=8,dominance=1,attractedto='m') for _ in range(5)]
-dragons = [mdr[i//2] if i%2 else fdr[i//2] for i in range(len(mdr)+len(fdr))]
-#dragons = [Dragon(name=choice(names),rank='alpha',fertility=8,attractedto='b') for _ in range(10)]
+#mdr = [Dragon(sex='m',rank='alpha',name=choice(names),fertility=8,dominance=8,attractedto='f') for _ in range(5)]
+#fdr = [Dragon(sex='f',rank='alpha',name=choice(names),fertility=8,dominance=1,attractedto='m') for _ in range(5)]
+#dragons = [mdr[i//2] if i%2 else fdr[i//2] for i in range(len(mdr)+len(fdr))]
+dragons = [Dragon(name=choice(names),attractedto='b') for _ in range(10)]

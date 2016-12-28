@@ -1,4 +1,4 @@
-"""                           [ ZLIB LICENSE ]
+[ ZLIB LICENSE ]
 Dragon Breeder -- a game based on breeding dragons
 version 1.2.8, April 28th, 2013
 
@@ -22,7 +22,7 @@ freely, subject to the following restrictions:
 
 Stephen Joseph [pcred566]
 
-                            [ LICENSE EXTENSION ]
+[ LICENSE EXTENSION ]
 All creative assets supplied with the provided software, including images and
 music, may be reused or redistributed AS LONG AS the source of said images or
 music is clearly labeled AND a link to the source (e.g. the location from which
@@ -30,12 +30,4 @@ the files were downloaded) is provided along with the content. If the content
 in which the images or music qualifies as 'Fair Use' or 'Derivative' then this
 restriction is not applicable and no link to the source is required; however,
 if the content is used in an unmodified form or is only slightly modified for
-suitable use the origin of the content must be clearly shown."""
-
-# Imports sge, sge.gfx, sge.dsp, and several other modules, along with utility functions.
-from gameutils import *
-
-# Create rooms
-sge.keyboard.set_repeat(interval=15,delay=450)
-sge.game.start_room = MenuRoom()
-sge.game.start()
+suitable use the origin of the content must be clearly shown.

@@ -321,7 +321,7 @@ class Dragon():
            if they are available, else defaults to resetting the timers using the method found in __init__."""
         
         self.timers.update({'neutral':0,'walking':-1,'sleeping':randint(FPS*60*10,FPS*60*20),
-                   'hungry':randint(FPS*60*2,FPS*60*5),'hatch':-1,'mature':-1,
+                   'hungry':randint(FPS*60*3,FPS*60*5),'hatch':-1,'mature':-1,
                    'canmate':-1,'endaffection':-1,'endmating':-1})
         
 
@@ -357,8 +357,6 @@ class Dragon():
                         self.state = 'walking'
                         self.timers['neutral'] = randint(FPS*1,FPS*3)
                         if choice((True,False)): self.facing = -self.facing # random flip around
-                    else:
-                        self.timers['walking'] = randint(FPS*2,FPS*4) # check again in 2-4 seconds
                         
                 elif key == 'sleeping': # state=sleep, then neutralize
                     if self.state in ('neutral','walking','eating','scratching') and not self.pregnant:
@@ -370,15 +368,23 @@ class Dragon():
                 elif key == 'hungry':
                     if (self.state == 'neutral' or self.state == 'walking'):
                         # TODO!!!!!
-                        # check inventory, update happiness etc.
-                        self.timers['hungry'] = randint(FPS*60*2,FPS*60*4) # RESET
-                        pass
+                        # update state etc.
+                        if inventory['food'] > 0:
+                            inventory['food'] -= 1
+                            self.happiness += 1
+                            self.state = 'eating'
+                        else:
+                            self.happiness -= 1
+                            self.state = 'scratching'
+                        self.timers['hungry'] = randint(FPS*60*2,FPS*60*3) # RESET
+                        self.timers['neutral'] = FPS*3 # eat/scratch for 3 seconds then neutralize.
                     else:
                         self.timers['hungry'] = randint(FPS*2,FPS*4) # check in 2-4s
                         
                 elif key == 'hatch':
                     self.age = 'juvenile'
                     self.reset_timers()
+                    self.timers['mature'] = randint(FPS*60*4,FPS*60*5) # mature in 4-5 minutes
                     
                 elif key == 'mature':
                     self.age = 'adult'
@@ -411,6 +417,7 @@ class Dragon():
 
                     if conditionsmet or mate.state == 'mating': # the dragons can mate. mate check is to prevent double chance filtration.
                         self.state = 'mating'
+                        self.happiness += 1
                         # no matter what, self and mate should always end mating simutaneously.
                         if mate.timers['endmating'] > 0:
                             self.timers['endmating'] = mate.timers['endmating']
@@ -426,9 +433,9 @@ class Dragon():
                         chance = self.fertility*2
                         if chance >= randint(2,16): # impregnated!
                             self.pregnant = True
-                            self.timers['givebirth'] = randint(FPS*60,FPS*90) # 1-1.5 minutes
+                            self.timers['givebirth'] = randint(FPS*60*10,FPS*60*12) # 10-12 minutes
                     self.canmate = False
-                    self.timers['canmate'] = randint(FPS*30,FPS*40) # 30-40 second rest period
+                    self.timers['canmate'] = randint(FPS*60*3,FPS*60*4) # 3-4 minute rest period
                     self.timers['neutral'] = 0
                 
                 elif key == 'givebirth':
@@ -437,11 +444,7 @@ class Dragon():
                     self.pregnant = False
 
         if self.age == 'egg':
-            self.state = 'neutral'
-            
-        if self.state == 'neutral' or self.state == 'sleeping':
-            # do nothing
-            pass
+            pass # do nothing
 
         elif self.state == 'walking':
             self.x += speed*self.facing
@@ -478,8 +481,10 @@ class Dragon():
                 return False # nothing happened
 
         elif self.mate:
-            if other.as_dict() == self.mate: # interact with mate                
-                if choice((True,True,True,True,False)): # 80% chance for affection
+            if other.as_dict() == self.mate: # interact with mate
+                chance = (True,True,True,True,False) if (self.canmate and other.canmate) else (True,False,False)
+                chance = (False) if self.happiness + other.happiness <= randint(2,16) else chance
+                if choice(chance): # 80%, 33%, or 0% depending on whether or not the dragons can mate and happiness.
                     self.timers['beginaffection'] = other.timers['beginaffection'] = 0 # the loving mood ensues
         return False
 
@@ -497,10 +502,10 @@ def offspring(parent1,parent2):
     rand = randint(1,100) # percent.
     if greek['gamma'] in ranks:
         if ranks[0] == greek['gamma'] and ranks[1] == greek['gamma']: # 2 gammas
-            if rand <= 10: # 10%
+            if rand <= 5: # 5%
                 rank = greek['alpha']
-            elif rand > 10 and rand <= 40: # 30%
-                rank = greeek['beta']
+            elif rand > 5 and rand <= 40: # 35%
+                rank = greek['beta']
             else: # 60%, #rekt
                 rank = greek['gamma']
         elif greek['beta'] in ranks: # one beta, one gamma
@@ -523,7 +528,7 @@ def offspring(parent1,parent2):
             if rand <= 10: # 20%
                 rank = greek['alpha']
             elif rand > 10 and rand <= 40: # 30%
-                rank = greeek['beta']
+                rank = greek['beta']
             else: # 60% chance for another gamma, #rekt
                 rank = greek['gamma']
         elif greek['alpha'] in ranks: # one beta, one alpha
@@ -544,7 +549,7 @@ def offspring(parent1,parent2):
 
     ##### end rank determination block #####
 
-    unlucky = [True,True,False] if choice((True,False)) else [True,False] # EVEN YOUR LUCK HAS LUCK
+    unlucky = (True,True,False) if choice((True,False)) else (True,False) # EVEN YOUR LUCK HAS LUCK
     
     if sex == 'm':
         dominance = randint(md.dominance,8)
@@ -560,12 +565,15 @@ def offspring(parent1,parent2):
         
     if choice(unlucky):
         fertility -= 1
+        if choice(unlucky): # holy god
+            fertility -= 1
 
     parents = {'fcolor':md.primary_col,'mcolor':fd.primary_col,'ftexture':fd.texture,'mtexture':md.texture,
                'fname':md.name,'mname':fd.name}
     
     primary_col = None # default if mother and father have no known parents, random engine will decide
     texture = choice((md.texture,fd.texture)) # default choose between texture of parents if grandparents not known
+
     if md.parents or fd.parents:
         if md.parents and fd.parents:
             # Choose out of grandparent colors if possible
