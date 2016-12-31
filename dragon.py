@@ -57,6 +57,9 @@ class Dragon():
 
     def info(self):
         """Returns a string that properly lists a dragon's stats for display purposes."""
+        if self.age == 'egg' or self.age == 'juvenile':
+            if not self.parents: return "?????"
+            else: return '?????\nPARENTS: ' + self.parents['fname'] + " / " + self.parents['mname']
         st = ("NAME: {}    SEX: {}\n"
             "RANK: {}     ORIENTATION: {}\n"
             "HAPPINESS: {}/8 AGE: {}\n"
@@ -100,13 +103,12 @@ class Dragon():
                 
         if rank == None:
             r = randint(1,100)
-            if r <= 5:
-                self.rank = greek['alpha']  # 5% chance for alpha
-            elif r in range(6,25):
-                self.rank = greek['beta']   # 20% chance for beta
+            if r <= 2:
+                self.rank = greek['alpha']  # 2% chance for alpha
+            elif r in range(3,13):
+                self.rank = greek['beta']   # 10% chance for beta
             else:
-                self.rank = greek['gamma'] # 75% chance for gamma
-                
+                self.rank = greek['gamma'] # 88% chance for gamma
         elif rank in greek.keys():
             self.rank = greek[rank]
         elif rank in greek.values():
@@ -122,10 +124,10 @@ class Dragon():
 
         if attractedto == None:
             r = randint(1,100)
-            # Bi: 50%, Straight: 25%, Gay: 25%
-            if r <= 50:
+            # Bi: 10%, Straight: 70%, Gay: 20%
+            if r <= 10:
                 self.attractedto = BI
-            elif 51 <= r <= 75:
+            elif 11 <= r <= 80:
                 self.attractedto = MALE if self.sex == FEMALE else FEMALE   
             else:
                 self.attractedto = FEMALE if self.sex == FEMALE else MALE 
@@ -221,7 +223,7 @@ class Dragon():
             hatchtime = randint(FPS*60*1,FPS*60*3) # hatch in 1-3 minutes.
             self.timers['hatch'] = hatchtime
 
-        self.timer_lock = None # if set to the name of a timer, prevents other timers from counting down
+        self.interaction_count = 0 # if set to the name of a timer, prevents other timers from counting down
                         
 
     def can_mate_with(self,other):
@@ -272,6 +274,8 @@ class Dragon():
 
         if other.happiness >= 5:
             attractiveness += 1 # attracted to dragons with high happiness
+        if other.happiness <= 2:
+            attractiveness -= 1 # oop
 
         attractiveness = 0 if attractiveness < 0 else attractiveness # sad day
 
@@ -285,7 +289,7 @@ class Dragon():
         if self.mate:
             return False
         base = self.compatibility(other)
-        chance = randint(0,7)
+        chance = randint(0,8)
         if base >= chance:
             acc = True
         return acc
@@ -328,7 +332,9 @@ class Dragon():
     def update(self,inventory,mate):
         """Important function. Moves the dragon around the screen and causes it to interact with other dragons.
            Returns multiple different object types depending on the dragon's actions. Also, it modifies inventory
-           as necessary in order to feed the given dragon."""
+           as necessary in order to feed the given dragon.
+           Things this method can do: update the state of the input dragon, manage its timers, cause it to move.
+           Things this method cannot do: change the dragon's current mate. This operation only happens via interact()."""
         
         speed = random()*0.8+0.2 # pixels per frame
         retval = None # to return
@@ -348,9 +354,8 @@ class Dragon():
                     if self.state == 'mating' or self.state == 'affection':
                         # the dragons are close to each other, so we move them a space apart to prevent multiple interactions.
                         self.x += self.facing
-                    self.timers['walking'] = randint(FPS*1,FPS*3)
+                    self.timers['walking'] = randint(FPS*2,FPS*3)
                     self.state = 'neutral'
-                    
                     
                 elif key == 'walking': # state=walk, then neutralize
                     if self.state == 'neutral':
@@ -360,15 +365,15 @@ class Dragon():
                         
                 elif key == 'sleeping': # state=sleep, then neutralize
                     if self.state in ('neutral','walking','eating','scratching') and not self.pregnant:
+                        self.happiness += 1
                         self.state = 'sleeping'
+                        self.timers['sleeping'] = randint(FPS*60*10,FPS*60*20)
                         self.timers['neutral'] = randint(FPS*45,FPS*60)
                     else: # could not go from previous state to sleep state
                         self.timers['sleeping'] = randint(FPS*2,FPS*4) # check in 2-4s
                         
                 elif key == 'hungry':
                     if (self.state == 'neutral' or self.state == 'walking'):
-                        # TODO!!!!!
-                        # update state etc.
                         if inventory['food'] > 0:
                             inventory['food'] -= 1
                             self.happiness += 1
@@ -376,7 +381,7 @@ class Dragon():
                         else:
                             self.happiness -= 1
                             self.state = 'scratching'
-                        self.timers['hungry'] = randint(FPS*60*2,FPS*60*3) # RESET
+                        self.timers['hungry'] = randint(FPS*60*2,FPS*60*3) # reset hunger
                         self.timers['neutral'] = FPS*3 # eat/scratch for 3 seconds then neutralize.
                     else:
                         self.timers['hungry'] = randint(FPS*2,FPS*4) # check in 2-4s
@@ -389,6 +394,8 @@ class Dragon():
                 elif key == 'mature':
                     self.age = 'adult'
                     self.canmate = True
+                    # The player has won if they breed a dragon with perfect stats
+                    # if self.is_perfect(): return 'victory'
                     
                 elif key == 'canmate':
                     self.canmate = True
@@ -429,13 +436,13 @@ class Dragon():
                         mate.timers['neutral'] = 0
                             
                 elif key == 'endmating':
-                    if self.sex == FEMALE and mate.sex == MALE: # chance to get pregnant~
-                        chance = self.fertility*2
-                        if chance >= randint(2,16): # impregnated!
+                    if self.sex == FEMALE and mate.sex == MALE and not self.pregnant: # chance to get pregnant~
+                        chance = self.fertility*2+mate.fertility//2
+                        if chance >= randint(2,18):
                             self.pregnant = True
-                            self.timers['givebirth'] = randint(FPS*60*10,FPS*60*12) # 10-12 minutes
+                            self.timers['givebirth'] = randint(FPS*60*5,FPS*60*7) # 5-7 minutes
                     self.canmate = False
-                    self.timers['canmate'] = randint(FPS*60*3,FPS*60*4) # 3-4 minute rest period
+                    self.timers['canmate'] = randint(FPS*60,FPS*90) # 1-1.5 minute rest period
                     self.timers['neutral'] = 0
                 
                 elif key == 'givebirth':
@@ -443,8 +450,14 @@ class Dragon():
                     print("A dragon gave birth on this frame.")
                     self.pregnant = False
 
+
         if self.age == 'egg':
             pass # do nothing
+
+        elif self.state == 'neutral':
+            if abs(self.x-240) < 30 or abs(self.x-20) < 30:
+                # too close to the wall, chance to move away
+                if choice((True,False,False)): self.timers['walking'] = 0
 
         elif self.state == 'walking':
             self.x += speed*self.facing
@@ -461,32 +474,94 @@ class Dragon():
 
         return retval
 
-    def interact(self,other):
-        # The two dragons will interact.
-        if self.state in ('affection','mating','sleeping','eating','scratching') or self.age == 'egg':
-            # no interaction possible during these states, as the dragon is either unable to or is already interacting.
+    def interact(self,mate,other,other_mate):
+        """'self' and 'other' will interact. If the dragon has a mate, the 'mate' parameter is the dragon's mate and
+           the other_mate parameter is other's mate, if said mates exist. This function is capable of modifying all
+           of its input parameters; for example, if self and other decide to become mates that will happen in this function,
+           and if, for example, other decides to break up with its mate, then that will also occur here."""
+        
+        if self.state not in ('walking','neutral') or self.age != 'adult':
+            # no interaction possible during these conditions, as the dragon is either unable to or is already interacting.
             return False
 
-        if other.state in ('affection','mating','sleeping','eating','scratching') or other.age == 'egg':
-            # same as above
+        if other and (other.state not in ('walking','neutral') or other.age != 'adult'):
+            # same as above, but with other
             return False
         
-        if not self.mate:
+        retval = ""
+        if self and self.mate: # self has a mate
+            self.interaction_count += 1
+        if other and other.mate: # other has a mate
+            other.interaction_count += 1
+        
+        if not self.mate and other:
             if choice((True,True,True,False)): # 75% chance to interact
                 if other.mate:
-                    return
+                    return # only messes with single dragons
                 if self.can_mate_with(other) and self.accept(other):
-                    return self.propose(other)
-            else:
-                return False # nothing happened
+                    if self.propose(other):
+                        self.timers['beginaffection'] = other.timers['beginaffection'] = 0
+                        self.interaction_count = other.interaction_count = 0
+                        retval = 'mated'
 
-        elif self.mate:
-            if other.as_dict() == self.mate: # interact with mate
-                chance = (True,True,True,True,False) if (self.canmate and other.canmate) else (True,False,False)
-                chance = (False) if self.happiness + other.happiness <= randint(2,16) else chance
-                if choice(chance): # 80%, 33%, or 0% depending on whether or not the dragons can mate and happiness.
-                    self.timers['beginaffection'] = other.timers['beginaffection'] = 0 # the loving mood ensues
-        return False
+        if self.mate and other == mate:
+            "This if block affects both self AND other (and other == mate)."
+            # interact with mate
+            self.interaction_count = clamp(self.interaction_count-50,0,50)
+            other.interaction_count = clamp(self.interaction_count-50,0,50)
+            chance = 80 if (self.canmate and other.canmate) else 33
+            chance = 3 if self.happiness + mate.happiness < randint(3,14) else chance
+            if chance >= randint(1,100):
+                self.timers['beginaffection'] = mate.timers['beginaffection'] = 0 # the loving mood ensues
+            
+        if self and self.mate and other != mate: # other is not this dragon's mate
+            "This if block affects only self."
+            if other and not other.mate and self.compatibility(other) > self.mate_attraction: #  other has no mate
+                if choice((True,False,False)) and \
+                   self.breakup_with_current_and_remate(mate,other):
+                    retval = 'breakup_remate_self_other'
+            if self.interaction_count >= 50: # the dragon and its mate have not found each other in a long ass time
+                if low_mate_interaction_reevaluate(self,mate):
+                    retval = 'breakup'
+                    
+        if other and other.mate and self != other_mate: # other has a mate which is not self
+            "This if block is a duplicate of the second one in the 'if self.mate' block, but instead it affects other."
+            if not self.mate and other.compatibility(self) > other.mate_attraction: #  self has no mate
+                if choice((True,False,False)) and \
+                   other.breakup_with_current_and_remate(other_mate,self):
+                    retval = 'breakup_remate_other_self'
+            if other.interaction_count >= 50: # other and its mate have not found each other in a long ass time
+                if low_mate_interaction_reevaluate(other,other_mate):
+                    retval = 'other_breakup'
+
+        return retval
+
+    def breakup_with_current_and_remate(self,mate,other):
+        
+        if not self.pregnant and not mate.pregnant and not other.mate and \
+                              self.can_mate_with(other) and self.accept(other):
+            if self.propose(other):
+                print('BREAKUP: {0} AND {1}, {0} REMATED {2}'.format(self.name,mate.name,other.name))
+                mate.mate = None # end relationship for mate
+                mate.happiness = clamp(mate.happiness-1,1,8)
+                self.timers['beginaffection'] = other.timers['beginaffection'] = 0
+                self.interaction_count = mate.interaction_count = other.interaction_count = 0
+                return True
+
+def low_mate_interaction_reevaluate(self,mate):
+    """This function causes 'self' and 'mate' to break up if they haven't interacted in a long time."""
+    self.interaction_count = 0 # reset
+    self.happiness = clamp(self.happiness-2,1,8)
+    if self.pregnant or mate.pregnant:
+        return False # breakup is impossible if the female is pregnant
+    if not(self.accept(mate) and mate.accept(self)) or 5 == randint(1,50): # chance to break
+        print('BREAKUP: {} AND {}.'.format(self.mate['name'],mate.mate['name']))
+        self.mate = mate.mate = None
+        self.interaction_count = mate.interaction_count = 0
+        return True
+        
+    return False
+        
 
 def offspring(parent1,parent2):
     
@@ -515,7 +590,7 @@ def offspring(parent1,parent2):
                 rank = greek['beta']
             else: # 50%
                 rank = greek['gamma']
-        elif greek['alpha'] in ranks: # one beta, one alpha
+        elif greek['alpha'] in ranks: # one gamma, one alpha
             if rand <= 20: # 20%
                 rank = greek['alpha']
             elif rand > 20 and rand <= 50: # 30%
@@ -529,7 +604,7 @@ def offspring(parent1,parent2):
                 rank = greek['alpha']
             elif rand > 10 and rand <= 40: # 30%
                 rank = greek['beta']
-            else: # 60% chance for another gamma, #rekt
+            else:
                 rank = greek['gamma']
         elif greek['alpha'] in ranks: # one beta, one alpha
             if rand <= 10:
@@ -549,19 +624,20 @@ def offspring(parent1,parent2):
 
     ##### end rank determination block #####
 
-    unlucky = (True,True,False) if choice((True,False)) else (True,False) # EVEN YOUR LUCK HAS LUCK
+    unlucky = (True,True,False) if choice((True,False)) else (True,False,False,False) # EVEN YOUR LUCK HAS LUCK
     
     if sex == 'm':
         dominance = randint(md.dominance,8)
-        if choice(unlucky):
-            dominance -= 1
         fertility = randint(md.fertility,8)
         
     else: # sex == 'f'
         dominance = randint(1,fd.dominance)
-        if choice(unlucky):
-            dominance += 1
         fertility = randint(fd.fertility,8)
+
+    if choice(unlucky):
+        dominance -= 1
+        if choice(unlucky):
+            dominance -= 1
         
     if choice(unlucky):
         fertility -= 1

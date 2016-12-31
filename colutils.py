@@ -3,7 +3,6 @@ from sge.gfx import Sprite,Color
 from random import randint,choice
 
 FPS = 64
-PAUSE = False
 w = 360 # convenience, width of window
 h = 240 # convenience, height of window
 
