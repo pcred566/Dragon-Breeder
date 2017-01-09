@@ -58,23 +58,42 @@ class Dragon():
     def info(self):
         """Returns a string that properly lists a dragon's stats for display purposes."""
         if self.age == 'egg' or self.age == 'juvenile':
-            if not self.parents: return "?????"
-            else: return '?????\nPARENTS: ' + self.parents['fname'] + " / " + self.parents['mname']
-        st = ("NAME: {}    SEX: {}\n"
-            "RANK: {}     ORIENTATION: {}\n"
-            "HAPPINESS: {}/8 AGE: {}\n"
-            "MATE: {}").format(self.name,'MALE' if self.sex=='m' else 'FEMALE',self.rank,self.orientation(),
-                                   self.happiness,self.age,self.mate['name'] if self.mate else "NONE")
+            if not self.parents: return "?????\nAGE: {}".format(self.age)
+            else: return 'AGE: {}\nPARENTS: {}/{}'.format(self.age,
+                         self.parents['fname'],self.parents['mname'])
+                         
+        if self.state == 'mating':
+            return self.name + '/' + self.mate['name'] + '\n'
+            
+        line1 = 'NAME: ' + self.name + '{}' + 'SEX: ' + self.sex.upper()+"\n"
+        line2 = 'ORIENT.: '+self.orientation() + '{}'+'RANK: '+self.rank+'\n'
+        line3 = 'HAPPINESS: '+str(self.happiness)+'{}'+'AGE: '+self.age+'\n'
+        line4 = ('DOMIN.: '+str(self.dominance)+'{}'+'FERTILITY: '+
+                str(self.fertility))
+        
+        nstring = 'NAME: ' + self.name
+        ostring = 'ORIENT.: ' + self.orientation()
+        hstring = 'HAPPINESS: 4/8'
+        dstring = 'DOMIN.: 5'
+        w1 = 35
+        line1 = line1.format(' '*(w1-len(line1)))
+        line2 = line2.format(' '*(w1-len(line2)))
+        line3 = line3.format(' '*(w1-len(line3)))
+        line4 = line4.format(' '*(w1-len(line4)))
+        st = line1+line2+line3+line4
+        
         if self.parents:
             st += '\nPARENTS: ' + self.parents['fname'] + " / " + self.parents['mname']
+        if self.mate:
+            st += '\nMATE: ' + self.mate['name']
         if self.pregnant:
             st += "\nThis dragon will soon lay an egg."
-        st += '\n'+self.state
-        st += '\n'+str(self.timers)
+
+        #st += '\n'+str(self.timers)
 
         return st
 
-    def __init__(self,x=None,y=None,name=None,sex=None,rank=None,dominance=None,attractedto=None,happiness=None,
+    def __init__(self,x=None,y=160,name=None,sex=None,rank=None,dominance=None,attractedto=None,happiness=None,
                  parents=None,primary_col=None,eye_col=None,state='neutral',pregnant=False,age=None,fertility=None,
                  facing=None,canmate=True,texture=None,toffset=None,flip=None,mirror=None,mate=None,mate_attraction=None):
         """If this method is called with as few parameters as is permissible, the system will
@@ -103,12 +122,12 @@ class Dragon():
                 
         if rank == None:
             r = randint(1,100)
-            if r <= 2:
-                self.rank = greek['alpha']  # 2% chance for alpha
-            elif r in range(3,13):
+            if r <= 1:
+                self.rank = greek['alpha']  # 1% chance for alpha
+            elif r in range(2,11):
                 self.rank = greek['beta']   # 10% chance for beta
             else:
-                self.rank = greek['gamma'] # 88% chance for gamma
+                self.rank = greek['gamma'] # 89% chance for gamma
         elif rank in greek.keys():
             self.rank = greek[rank]
         elif rank in greek.values():
@@ -286,8 +305,6 @@ class Dragon():
            and decide for 'self' if 'other' constitutes an acceptable mate. Has higher
            chance to reject on low compatibility. Called internally by propose function."""
         acc = False
-        if self.mate:
-            return False
         base = self.compatibility(other)
         chance = randint(0,8)
         if base >= chance:
@@ -336,7 +353,6 @@ class Dragon():
            Things this method can do: update the state of the input dragon, manage its timers, cause it to move.
            Things this method cannot do: change the dragon's current mate. This operation only happens via interact()."""
         
-        speed = random()*0.8+0.2 # pixels per frame
         retval = None # to return
         
         for key,val in self.timers.items():
@@ -350,11 +366,14 @@ class Dragon():
                    affection->mating
                    mating->neutral
                 """
-                if key == 'neutral': # state=neutralize, then walk
+                if key == 'neutral': # state=neutral, then walk
                     if self.state == 'mating' or self.state == 'affection':
                         # the dragons are close to each other, so we move them a space apart to prevent multiple interactions.
                         self.x += self.facing
                     self.timers['walking'] = randint(FPS*2,FPS*3)
+                    if abs(self.x-240) < 30 or abs(self.x-20) < 30:
+                        # too close to the wall, chance to move away
+                        if choice((True,True,True,False)): self.timers['walking'] = 0
                     self.state = 'neutral'
                     
                 elif key == 'walking': # state=walk, then neutralize
@@ -362,6 +381,7 @@ class Dragon():
                         self.state = 'walking'
                         self.timers['neutral'] = randint(FPS*1,FPS*3)
                         if choice((True,False)): self.facing = -self.facing # random flip around
+                        
                         
                 elif key == 'sleeping': # state=sleep, then neutralize
                     if self.state in ('neutral','walking','eating','scratching') and not self.pregnant:
@@ -379,7 +399,7 @@ class Dragon():
                             self.happiness += 1
                             self.state = 'eating'
                         else:
-                            self.happiness -= 1
+                            self.happiness = clamp(self.happiness-1,1,8)
                             self.state = 'scratching'
                         self.timers['hungry'] = randint(FPS*60*2,FPS*60*3) # reset hunger
                         self.timers['neutral'] = FPS*3 # eat/scratch for 3 seconds then neutralize.
@@ -389,6 +409,7 @@ class Dragon():
                 elif key == 'hatch':
                     self.age = 'juvenile'
                     self.reset_timers()
+                    retval = 'hatch'
                     self.timers['mature'] = randint(FPS*60*4,FPS*60*5) # mature in 4-5 minutes
                     
                 elif key == 'mature':
@@ -424,7 +445,7 @@ class Dragon():
 
                     if conditionsmet or mate.state == 'mating': # the dragons can mate. mate check is to prevent double chance filtration.
                         self.state = 'mating'
-                        self.happiness += 1
+                        self.happiness += 1 if choice((True,False)) else 0
                         # no matter what, self and mate should always end mating simutaneously.
                         if mate.timers['endmating'] > 0:
                             self.timers['endmating'] = mate.timers['endmating']
@@ -447,19 +468,14 @@ class Dragon():
                 
                 elif key == 'givebirth':
                     retval = offspring(self,mate)
-                    print("A dragon gave birth on this frame.")
                     self.pregnant = False
 
 
         if self.age == 'egg':
             pass # do nothing
 
-        elif self.state == 'neutral':
-            if abs(self.x-240) < 30 or abs(self.x-20) < 30:
-                # too close to the wall, chance to move away
-                if choice((True,False,False)): self.timers['walking'] = 0
-
         elif self.state == 'walking':
+            speed = 0.6 # pixels per frame
             self.x += speed*self.facing
             if self.x+speed*self.facing < 20 or self.x+speed*self.facing > 240:
                 self.facing = -1 if self.facing == 1 else 1
@@ -507,28 +523,25 @@ class Dragon():
         if self.mate and other == mate:
             "This if block affects both self AND other (and other == mate)."
             # interact with mate
-            self.interaction_count = clamp(self.interaction_count-50,0,50)
-            other.interaction_count = clamp(self.interaction_count-50,0,50)
+            self.interaction_count = other.interaction_count = 0
             chance = 80 if (self.canmate and other.canmate) else 33
-            chance = 3 if self.happiness + mate.happiness < randint(3,14) else chance
+            chance = 15 if self.happiness + mate.happiness < randint(3,14) else chance
             if chance >= randint(1,100):
                 self.timers['beginaffection'] = mate.timers['beginaffection'] = 0 # the loving mood ensues
-            
+
         if self and self.mate and other != mate: # other is not this dragon's mate
             "This if block affects only self."
             if other and not other.mate and self.compatibility(other) > self.mate_attraction: #  other has no mate
-                if choice((True,False,False)) and \
-                   self.breakup_with_current_and_remate(mate,other):
+                if self.breakup_with_current_and_remate(mate,other):
                     retval = 'breakup_remate_self_other'
             if self.interaction_count >= 50: # the dragon and its mate have not found each other in a long ass time
                 if low_mate_interaction_reevaluate(self,mate):
                     retval = 'breakup'
-                    
+
         if other and other.mate and self != other_mate: # other has a mate which is not self
-            "This if block is a duplicate of the second one in the 'if self.mate' block, but instead it affects other."
-            if not self.mate and other.compatibility(self) > other.mate_attraction: #  self has no mate
-                if choice((True,False,False)) and \
-                   other.breakup_with_current_and_remate(other_mate,self):
+            "This if block is a duplicate of the second one in the above block, but rather affects other."
+            if self and not self.mate and other.compatibility(self) > other.mate_attraction: #  self has no mate
+                if other.breakup_with_current_and_remate(other_mate,self):
                     retval = 'breakup_remate_other_self'
             if other.interaction_count >= 50: # other and its mate have not found each other in a long ass time
                 if low_mate_interaction_reevaluate(other,other_mate):
@@ -538,10 +551,11 @@ class Dragon():
 
     def breakup_with_current_and_remate(self,mate,other):
         
-        if not self.pregnant and not mate.pregnant and not other.mate and \
-                              self.can_mate_with(other) and self.accept(other):
+        if choice((True,True,False)) and not self.pregnant and not mate.pregnant and \
+                not other.mate and self.can_mate_with(other) and self.accept(other):
             if self.propose(other):
-                print('BREAKUP: {0} AND {1}, {0} REMATED {2}'.format(self.name,mate.name,other.name))
+                print('BREAKUP: {0} AND {1}, {0} REMATED {2}'.format(
+                                        self.name,mate.name,other.name))
                 mate.mate = None # end relationship for mate
                 mate.happiness = clamp(mate.happiness-1,1,8)
                 self.timers['beginaffection'] = other.timers['beginaffection'] = 0
@@ -577,30 +591,30 @@ def offspring(parent1,parent2):
     rand = randint(1,100) # percent.
     if greek['gamma'] in ranks:
         if ranks[0] == greek['gamma'] and ranks[1] == greek['gamma']: # 2 gammas
-            if rand <= 5: # 5%
+            if rand <= 2: # 2%
                 rank = greek['alpha']
-            elif rand > 5 and rand <= 40: # 35%
+            elif rand > 2 and rand <= 12: # 10%
                 rank = greek['beta']
-            else: # 60%, #rekt
+            else: # 78%, #rekt
                 rank = greek['gamma']
         elif greek['beta'] in ranks: # one beta, one gamma
-            if rand <= 10: # 10%
+            if rand <= 5: # 5%
                 rank = greek['alpha']
-            elif rand > 10 and rand <= 50: # 40%
+            elif rand > 5 and rand <= 25: # 20%
                 rank = greek['beta']
             else: # 50%
                 rank = greek['gamma']
         elif greek['alpha'] in ranks: # one gamma, one alpha
-            if rand <= 20: # 20%
+            if rand <= 10: # 10%
                 rank = greek['alpha']
-            elif rand > 20 and rand <= 50: # 30%
+            elif rand > 10 and rand <= 35: # 25%
                 rank = greek['beta']
             else: # 50%
                 rank = greek['gamma']
                 
-    elif greek['beta'] in ranks:
+    elif greek['beta'] in ranks: # at most 1 gamma
         if ranks[0] == greek['beta'] and ranks[1] == greek['beta']: # 2 betas
-            if rand <= 10: # 20%
+            if rand <= 10: # 10%
                 rank = greek['alpha']
             elif rand > 10 and rand <= 40: # 30%
                 rank = greek['beta']
@@ -615,11 +629,11 @@ def offspring(parent1,parent2):
                 rank = greek['gamma']
 
     else: # TWO ALPHAS
-        if rand <= 50: # 50%
+        if rand <= 20: # 20%
             rank = greek['alpha']
-        elif rand > 50 and rand <= 90: # 40%
+        elif rand > 20 and rand <= 70: # 50%
             rank = greek['beta']
-        else: # 10% (#REKT LMFAO)
+        else: # 20% (#REKT LMFAO)
             rank = greek['gamma']
 
     ##### end rank determination block #####
@@ -638,14 +652,14 @@ def offspring(parent1,parent2):
         dominance -= 1
         if choice(unlucky):
             dominance -= 1
-        
+
     if choice(unlucky):
         fertility -= 1
         if choice(unlucky): # holy god
             fertility -= 1
 
     parents = {'fcolor':md.primary_col,'mcolor':fd.primary_col,'ftexture':fd.texture,'mtexture':md.texture,
-               'fname':md.name,'mname':fd.name}
+               'fname':md.name,'mname':fd.name,'feyecol':md.eye_col,'meyecol':fd.eye_col}
     
     primary_col = None # default if mother and father have no known parents, random engine will decide
     texture = choice((md.texture,fd.texture)) # default choose between texture of parents if grandparents not known
@@ -653,13 +667,15 @@ def offspring(parent1,parent2):
     if md.parents or fd.parents:
         if md.parents and fd.parents:
             # Choose out of grandparent colors if possible
-            primary_col = choice((md.parents['fcolor'],md.parents['mcolor'],fd.parents['fcolor'],fd.parents['mcolor']))
-            texture = choice((md.parents['ftexture'],md.parents['mtexture'],fd.parents['ftexture'],fd.parents['mtexture']))
+            texture = choice((md.parents['ftexture'],md.parents['mtexture'],
+                                fd.parents['ftexture'],fd.parents['mtexture']))
+            eye_col = choice((md.parents['feyecol'],md.parents['meyecol'],
+                                fd.parents['feyecol'],fd.parents['meyecol']))
         else:
             gp = md.parents if md.parents else fd.parents # else select existing grandparents
-            primary_col = choice((gp['fcolor'],gp['mcolor'])) # and pick a color...
             texture = choice((gp['ftexture'],gp['mtexture'])) # and a texture.
+            eye_col = choice((gp['feyecol'],gp['meyecol'])) # and a texture.
     
     child = Dragon(sex=sex,rank=rank,dominance=dominance,fertility=fertility,happiness=5,
-                                          parents=parents,primary_col=primary_col,age='egg')
+                        eye_col=eye_col,parents=parents,primary_col=primary_col,age='egg')
     return child
